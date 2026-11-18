@@ -1,0 +1,274 @@
+.pn-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 20, 30, 0.35);
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 600;
+  color: #fff;
+  --u: clamp(0.6px, 0.1vmin + 0.38px, 1.15px);
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  touch-action: pan-y;
+}
+.pn-wrap.hide {
+  display: none;
+}
+.pn {
+  position: relative;
+  width: min(94vw, calc(820 * var(--u)));
+  max-height: min(86dvh, calc(720 * var(--u)));
+  display: flex;
+  flex-direction: column;
+  border-radius: calc(18 * var(--u));
+  border: calc(5 * var(--u)) solid #161616;
+  background: #2a3550;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 30%, transparent 32%);
+  background-size: calc(16 * var(--u)) calc(16 * var(--u));
+  box-shadow: 0 calc(10 * var(--u)) 0 rgba(0, 0, 0, 0.35);
+  animation: pnin 0.22s cubic-bezier(0.2, 1.4, 0.4, 1);
+  overflow: hidden;
+}
+@keyframes pnin {
+  from { transform: scale(0.7); opacity: 0; }
+}
+.pn-head {
+  display: flex;
+  align-items: center;
+  gap: calc(10 * var(--u));
+  padding: calc(10 * var(--u)) calc(14 * var(--u));
+  background: var(--accent, #f2b33a);
+  border-bottom: calc(5 * var(--u)) solid #161616;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(40 * var(--u));
+  letter-spacing: calc(1 * var(--u));
+}
+.pn-head svg {
+  width: calc(52 * var(--u));
+  height: calc(52 * var(--u));
+}
+.pn-head .t {
+  flex: 1;
+}
+.pn-close {
+  width: calc(54 * var(--u));
+  height: calc(54 * var(--u));
+  border-radius: calc(10 * var(--u));
+  border: calc(4 * var(--u)) solid #161616;
+  background: linear-gradient(#ff7a6a, #e8392a);
+  padding: calc(8 * var(--u));
+  cursor: pointer;
+}
+.pn-close svg {
+  width: 100%;
+  height: 100%;
+}
+.pn-tabs {
+  display: flex;
+  gap: calc(8 * var(--u));
+  padding: calc(10 * var(--u)) calc(14 * var(--u)) 0;
+  flex-wrap: wrap;
+}
+.pn-tabs button {
+  border: calc(3 * var(--u)) solid #161616;
+  border-radius: calc(10 * var(--u));
+  background: #3d4a6e;
+  color: #fff;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(22 * var(--u));
+  padding: calc(6 * var(--u)) calc(16 * var(--u));
+  cursor: pointer;
+}
+.pn-tabs button.on {
+  background: var(--accent, #f2b33a);
+}
+.pn-sub {
+  padding: calc(8 * var(--u)) calc(16 * var(--u)) 0;
+  font-size: calc(18 * var(--u));
+  color: #cfe0ff;
+}
+.pn-body {
+  overflow-y: auto;
+  padding: calc(12 * var(--u)) calc(14 * var(--u)) calc(16 * var(--u));
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.pn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(170 * var(--u)), 1fr));
+  gap: calc(12 * var(--u));
+}
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(4 * var(--u));
+  padding: calc(10 * var(--u)) calc(8 * var(--u));
+  border-radius: calc(12 * var(--u));
+  border: calc(4 * var(--u)) solid #161616;
+  background: linear-gradient(#4a5a85, #34416a);
+  text-align: center;
+  min-height: calc(200 * var(--u));
+}
+.card.r-common { background: linear-gradient(#69758f, #4b556e); }
+.card.r-uncommon { background: linear-gradient(#4fae4a, #2f7a34); }
+.card.r-rare { background: linear-gradient(#3d8fe0, #2a5fb0); }
+.card.r-epic { background: linear-gradient(#a65be0, #7038b0); }
+.card.r-legendary { background: linear-gradient(#f2b33a, #c97a12); }
+.card.locked {
+  filter: saturate(0.4) brightness(0.8);
+}
+.card .ic {
+  width: calc(110 * var(--u));
+  height: calc(96 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card .ic img,
+.card .ic svg {
+  max-width: 100%;
+  max-height: 100%;
+  filter: drop-shadow(0 calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.3));
+}
+.card .ic img.sil {
+  filter: brightness(0) opacity(0.55);
+}
+.card .nm {
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(22 * var(--u));
+  line-height: 1.05;
+}
+.card .ds {
+  font-size: calc(15 * var(--u));
+  color: #e6efff;
+  line-height: 1.2;
+  min-height: calc(18 * var(--u));
+}
+.card .tag {
+  position: absolute;
+  left: calc(6 * var(--u));
+  top: calc(6 * var(--u));
+  font-size: calc(13 * var(--u));
+  padding: calc(1 * var(--u)) calc(8 * var(--u));
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.card .btn {
+  margin-top: auto;
+  width: 100%;
+  border: calc(3 * var(--u)) solid #161616;
+  border-radius: calc(10 * var(--u));
+  background: linear-gradient(#7dff5a, #2fbf3a);
+  color: #fff;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(22 * var(--u));
+  padding: calc(6 * var(--u)) 0 calc(4 * var(--u));
+  cursor: pointer;
+  text-shadow: 0 calc(2 * var(--u)) 0 #1a5a1a;
+}
+.card .btn.alt {
+  background: linear-gradient(#7fd0ff, #2f9bff);
+  text-shadow: 0 calc(2 * var(--u)) 0 #1a3a7a;
+}
+.card .btn.off {
+  background: linear-gradient(#a9adb5, #7a7f88);
+  text-shadow: none;
+  cursor: default;
+}
+.card .btn.red {
+  background: linear-gradient(#ff8a7a, #e8392a);
+  text-shadow: 0 calc(2 * var(--u)) 0 #7a1a1a;
+}
+.card.shake {
+  animation: shake 0.3s;
+}
+@keyframes shake {
+  25% { transform: translateX(calc(-6 * var(--u))); }
+  75% { transform: translateX(calc(6 * var(--u))); }
+}
+.pn-row {
+  display: flex;
+  align-items: center;
+  gap: calc(12 * var(--u));
+  padding: calc(8 * var(--u)) calc(10 * var(--u));
+  border-radius: calc(12 * var(--u));
+  border: calc(3 * var(--u)) solid #161616;
+  background: #34416a;
+  margin-bottom: calc(8 * var(--u));
+}
+.pn-row img {
+  width: calc(64 * var(--u));
+  height: calc(56 * var(--u));
+  object-fit: contain;
+}
+.pn-row .grow {
+  flex: 1;
+  min-width: 0;
+}
+.pn-row .nm {
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(22 * var(--u));
+}
+.pn-row .ds {
+  font-size: calc(16 * var(--u));
+  color: #cfe0ff;
+}
+.pn-row .btn {
+  border: calc(3 * var(--u)) solid #161616;
+  border-radius: calc(10 * var(--u));
+  background: linear-gradient(#7dff5a, #2fbf3a);
+  color: #fff;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(20 * var(--u));
+  padding: calc(6 * var(--u)) calc(14 * var(--u)) calc(4 * var(--u));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pn-row .btn.off {
+  background: linear-gradient(#a9adb5, #7a7f88);
+}
+.pn-row .btn.red {
+  background: linear-gradient(#ff8a7a, #e8392a);
+}
+.pn-big {
+  text-align: center;
+  padding: calc(16 * var(--u));
+}
+.pn-big .huge {
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(56 * var(--u));
+  color: #8dff6a;
+}
+.pn-big svg {
+  width: calc(140 * var(--u));
+  height: calc(140 * var(--u));
+}
+.pn-big .btn {
+  margin-top: calc(14 * var(--u));
+  border: calc(4 * var(--u)) solid #161616;
+  border-radius: calc(12 * var(--u));
+  background: linear-gradient(#7dff5a, #2fbf3a);
+  color: #fff;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(34 * var(--u));
+  padding: calc(10 * var(--u)) calc(40 * var(--u)) calc(6 * var(--u));
+  cursor: pointer;
+}
+.pn-big .btn.off {
+  background: linear-gradient(#a9adb5, #7a7f88);
+}
+.bp-track {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(130 * var(--u)), 1fr));
+  gap: calc(10 * var(--u));
+}
+.bp-track .card {
+  min-height: calc(150 * var(--u));
+}
+.pn .ol2 {
+  text-shadow: 0 calc(2 * var(--u)) 0 rgba(0, 0, 0, 0.6);
+}

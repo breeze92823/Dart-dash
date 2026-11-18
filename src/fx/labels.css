@@ -1,0 +1,241 @@
+.wl-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 4;
+  font-family: 'Luckiest Guy', 'Fredoka', system-ui, sans-serif;
+}
+.wl {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 50% 100%;
+  white-space: nowrap;
+  text-align: center;
+  will-change: transform;
+  color: #fff;
+  --o: #111;
+  text-shadow: 0 3px 0 var(--o), 3px 0 0 var(--o), -3px 0 0 var(--o), 0 -3px 0 var(--o), 2px 2px 0 var(--o), -2px 2px 0 var(--o), 2px -2px 0 var(--o), -2px -2px 0 var(--o), 0 5px 4px rgba(0, 0, 0, 0.35);
+  letter-spacing: 0.5px;
+}
+.wl-fredoka {
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 700;
+}
+
+/* Shop titles: "Dart Shop" + "Next restock in 9:12" */
+.wl-shop .t {
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 92px;
+  line-height: 1;
+}
+.wl-shop .s {
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 46px;
+  line-height: 1.1;
+}
+
+/* Animal tag (aiming): "Common · 75 $/s" / "1 in 8" */
+.wl-animal .t {
+  font-size: 44px;
+  line-height: 1;
+}
+.wl-animal .s {
+  font-size: 30px;
+  line-height: 1.1;
+  color: #fff;
+}
+.wl-animal .mut {
+  margin-right: 8px;
+}
+
+/* Sleep ring: countdown in a ring + who put it to sleep. */
+.wl-sleep .ring {
+  position: relative;
+  width: 130px;
+  height: 130px;
+  margin: 0 auto;
+}
+.wl-sleep svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.45));
+}
+.wl-sleep .num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 50px;
+  color: #b9ff9a;
+}
+.wl-sleep .z {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  font-size: 36px;
+  color: #e6f2ff;
+  animation: wlz 1.6s ease-in-out infinite;
+}
+.wl-sleep .by {
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 30px;
+  margin-top: 4px;
+}
+.wl-sleep.warn .num {
+  color: #ff6b5a;
+  animation: wlblink 0.5s steps(2) infinite;
+}
+@keyframes wlz {
+  0%, 100% { transform: translate(0, 0); opacity: 0.85; }
+  50% { transform: translate(-6px, -10px); opacity: 1; }
+}
+@keyframes wlblink {
+  50% { opacity: 0.45; }
+}
+
+/* Big value over a sleeping / carried animal: "1.5B $/s" / "Golden Epic" */
+.wl-value .t {
+  font-size: 84px;
+  line-height: 1;
+  color: #8dff6a;
+}
+.wl-value .s {
+  font-size: 52px;
+  line-height: 1.05;
+}
+
+/* "!" alert over a startled animal */
+.wl-alert {
+  font-size: 110px;
+  line-height: 1;
+  animation: wlpop 0.25s ease-out;
+}
+@keyframes wlpop {
+  from { transform: scale(0.2); }
+}
+
+/* Floating "+30 $" */
+.wl-pop {
+  font-size: 54px;
+  color: #6dff5a;
+}
+.wl-pop.gold {
+  color: #ffd23f;
+}
+.wl-pop.big {
+  font-size: 80px;
+}
+
+/* YOUR BASE marker */
+.wl-base .house {
+  width: 150px;
+  height: 140px;
+  margin: 0 auto;
+  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.5));
+}
+.wl-base .t {
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 48px;
+}
+
+/* Player / bot name tags */
+.wl-name {
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 34px;
+  --o: rgba(0, 0, 0, 0.55);
+}
+.wl-title {
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 44px;
+}
+
+/* Floating board text (treadmill "+1/STEP" etc.) */
+.wl-step {
+  font-size: 80px;
+  color: #6fd9ff;
+  --o: #0b2d6b;
+}
+
+/* Proximity prompt (tap or press E) */
+.wl-prompt {
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 22px 12px 12px;
+  border-radius: 18px;
+  background: rgba(20, 22, 30, 0.72);
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 34px;
+  text-shadow: none;
+  touch-action: none;
+}
+.wl-prompt .key {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.wl-prompt .sub {
+  display: block;
+  font-size: 24px;
+  opacity: 0.75;
+  font-weight: 500;
+}
+
+/* Comic hit words over a darted animal: "MOOH" / "@!@" / "POK!" */
+.wl-hit {
+  line-height: 0.92;
+  --o: #141414;
+}
+.wl-hit div {
+  animation: hwin 0.26s cubic-bezier(0.3, 1.7, 0.5, 1) both;
+}
+.wl-hit .hw-call {
+  font-size: 104px;
+  color: #ffffff;
+}
+.wl-hit .hw-dizzy {
+  font-size: 84px;
+  color: #ffd23f;
+  margin-top: -30px;
+  animation-delay: 0.05s;
+}
+.wl-hit .hw-pok {
+  font-size: 112px;
+  color: #ffe14a;
+  margin-top: -22px;
+  animation-delay: 0.1s;
+}
+.wl-hit .hw-pok:only-child {
+  margin-top: 0;
+  animation-delay: 0s;
+}
+@keyframes hwin {
+  from { transform: scale(0.15) rotate(-10deg); opacity: 0; }
+}
+
+/* YOUR BASE marker bobs while you carry an animal home. */
+.wl-base.pulse .house {
+  animation: wlbob 0.8s ease-in-out infinite;
+}
+@keyframes wlbob {
+  50% { transform: translateY(-14px) scale(1.06); }
+}

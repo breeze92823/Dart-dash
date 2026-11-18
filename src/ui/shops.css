@@ -1,0 +1,395 @@
+/* Shop windows (shops.js): title-bar extras, carousel extras, Darts grid, Trail row. */
+.sh-extra {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  margin-right: calc(8 * var(--u));
+  min-width: 0;
+}
+.sh-wallet,
+.sh-restock {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--u));
+  height: calc(44 * var(--u));
+  padding: 0 calc(16 * var(--u));
+  border-radius: 99px;
+  border: calc(3 * var(--u)) solid #f2b33a;
+  background: #17171f;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(24 * var(--u));
+  color: #8dff5a;
+  white-space: nowrap;
+}
+.sh-wallet svg {
+  width: calc(32 * var(--u));
+  height: calc(32 * var(--u));
+}
+.sh-restock {
+  color: #fff;
+  font-size: calc(20 * var(--u));
+}
+.sh-quiver {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--u));
+  min-height: 40px;
+  padding: calc(2 * var(--u)) calc(12 * var(--u));
+  border-radius: calc(10 * var(--u));
+  border: calc(3 * var(--u)) solid #161616;
+  background: linear-gradient(#ffd75a, #f2a52a);
+  color: #fff;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(18 * var(--u));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sh-quiver svg {
+  width: calc(34 * var(--u));
+  height: calc(34 * var(--u));
+}
+.sh-quiver span {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+.sh-quiver i {
+  font-style: normal;
+  font-size: calc(15 * var(--u));
+  color: #1b4a10;
+  text-shadow: none;
+}
+.sh-quiver.owned {
+  background: linear-gradient(#8dff5a, #3fc24a);
+  cursor: default;
+}
+.sh-quiver.off {
+  filter: grayscale(0.6);
+}
+.pn-tabs.grp button {
+  min-height: 40px;
+}
+.pn-tabs.grp button.on {
+  background: var(--accent);
+  box-shadow: 0 0 0 calc(3 * var(--u)) #fff inset;
+}
+
+/* Carousel extras ---------------------------------------------------------------------------------- */
+.sh-pill {
+  border-radius: 99px;
+  background: var(--pc, linear-gradient(#5fc8ff, #2f8fe8));
+  border: calc(3 * var(--u)) solid #161616;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(18 * var(--u));
+  padding: calc(4 * var(--u)) calc(18 * var(--u)) calc(1 * var(--u));
+  text-align: center;
+  max-width: 100%;
+}
+.sk-pic {
+  position: relative;
+  overflow: hidden; /* keeps aspect-ratio when the picture is an SVG */
+}
+.sk-pic svg {
+  height: 88%;
+  width: auto;
+  filter: drop-shadow(0 calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.25));
+}
+.sk-pic svg.sil,
+.sk-pic img.sil {
+  filter: brightness(0) opacity(0.65);
+}
+.sk-top {
+  position: absolute;
+  top: calc(4 * var(--u));
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(28 * var(--u));
+  color: #ffe14a;
+}
+.sk-card.small .sk-top {
+  font-size: calc(18 * var(--u));
+}
+.sk-price,
+.sk-owned {
+  min-height: 36px;
+  min-width: 70%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(10 * var(--u));
+  border: calc(3 * var(--u)) solid #161616;
+  background: linear-gradient(#e6e8ec, #a9adb5);
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(20 * var(--u));
+}
+.sk-owned {
+  background: none;
+  border: none;
+  color: #8dff5a;
+}
+.sk-btn.blue { background: linear-gradient(#7fd0ff, #2f9bff); }
+.sk-btn.grey { background: linear-gradient(#e6e8ec, #a9adb5); }
+
+/* Darts ---------------------------------------------------------------------------------------------- */
+.pn-darts .pn-body {
+  background: #2a2350;
+}
+.dt-h {
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(30 * var(--u));
+  color: #ffd23f;
+  margin: calc(4 * var(--u)) 0 calc(8 * var(--u));
+}
+.dt-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: calc(10 * var(--u));
+  margin-bottom: calc(14 * var(--u));
+}
+.dt-card {
+  border-radius: calc(12 * var(--u));
+  border: calc(4 * var(--u)) solid #161616;
+  background-color: #3a2f7a;
+  background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.05) 75%);
+  background-size: calc(36 * var(--u)) calc(36 * var(--u));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(3 * var(--u));
+  padding: calc(8 * var(--u)) calc(10 * var(--u)) calc(10 * var(--u));
+}
+.dt-card.special {
+  border-color: #c04ae0;
+}
+.dt-card.eq {
+  box-shadow: 0 0 0 calc(3 * var(--u)) #8dff5a inset;
+}
+.dt-tile {
+  width: calc(84 * var(--u));
+  height: calc(84 * var(--u));
+  border-radius: calc(8 * var(--u));
+  border: calc(3 * var(--u)) solid #161616;
+  background: var(--tile);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dt-tile svg {
+  width: 82%;
+  height: 82%;
+}
+.dt-n {
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(28 * var(--u));
+}
+.dt-d {
+  font-size: calc(15 * var(--u));
+  text-align: center;
+}
+.dt-stock {
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(22 * var(--u));
+  color: #ffd23f;
+}
+.dt-stock.out {
+  color: #ff5a4a;
+}
+.dt-own {
+  font-size: calc(14 * var(--u));
+  color: #cfd6ff;
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--u));
+  min-height: 28px;
+}
+.dt-use {
+  border: calc(2 * var(--u)) solid #161616;
+  border-radius: calc(8 * var(--u));
+  background: linear-gradient(#7fd0ff, #2f9bff);
+  color: #fff;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(15 * var(--u));
+  padding: calc(3 * var(--u)) calc(10 * var(--u)) calc(1 * var(--u));
+  cursor: pointer;
+  min-height: 28px;
+}
+.dt-use.on {
+  background: none;
+  border: none;
+  color: #8dff5a;
+  cursor: default;
+}
+.dt-row {
+  display: flex;
+  gap: calc(6 * var(--u));
+  width: 100%;
+  margin-top: auto;
+}
+.dt-col {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6 * var(--u));
+  width: 100%;
+  margin-top: auto;
+}
+.dt-b {
+  flex: 1 1 auto;
+  min-height: 44px;
+  border: calc(3 * var(--u)) solid #161616;
+  border-radius: calc(10 * var(--u));
+  color: #fff;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(20 * var(--u));
+  padding: calc(4 * var(--u)) calc(6 * var(--u)) calc(1 * var(--u));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dt-b.small {
+  flex: 0 0 auto;
+  min-width: calc(60 * var(--u));
+}
+.dt-b.green { background: linear-gradient(#8dff5a, #3fc24a); }
+.dt-b.grey { background: linear-gradient(#e6e8ec, #a9adb5); }
+.dt-b.gold { background: linear-gradient(#ffd75a, #f2a52a); }
+.dt-b.off { filter: grayscale(0.8) brightness(0.9); }
+.fbtn.green { background: linear-gradient(#8dff5a, #3fc24a); }
+.dt-foot .fbtn {
+  font-size: calc(22 * var(--u));
+}
+
+/* Trails -------------------------------------------------------------------------------------------- */
+.tr-row {
+  display: flex;
+  gap: calc(10 * var(--u));
+  overflow-x: auto;
+  padding-bottom: calc(8 * var(--u));
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.tr-card {
+  flex: 0 0 calc(230 * var(--u));
+  scroll-snap-align: start;
+  border-radius: calc(12 * var(--u));
+  border: calc(4 * var(--u)) solid #161616;
+  background-color: var(--rc);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.14) 30%, transparent 32%);
+  background-size: calc(14 * var(--u)) calc(14 * var(--u));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: calc(8 * var(--u));
+  gap: calc(4 * var(--u));
+}
+.tr-card.r-common .tr-n,
+.tr-card.r-common .tr-r {
+  color: #fff;
+}
+.tr-card.r-mythic {
+  background-image: linear-gradient(160deg, #ffd0e8, #ff9ad8 60%, #c78aff);
+}
+.tr-card.eq {
+  box-shadow: 0 0 0 calc(4 * var(--u)) #8dff5a inset;
+}
+.tr-n {
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(24 * var(--u));
+  text-align: center;
+  line-height: 1;
+}
+.tr-r {
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(18 * var(--u));
+}
+.tr-ic {
+  width: 100%;
+  height: calc(130 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tr-ic svg {
+  height: 100%;
+  filter: drop-shadow(0 calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.25));
+}
+.tr-sp {
+  width: 100%;
+  text-align: center;
+  border-radius: calc(6 * var(--u));
+  background: rgba(0, 0, 0, 0.35);
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(24 * var(--u));
+  color: #8dff5a;
+  padding: calc(3 * var(--u)) 0 0;
+}
+.tr-b {
+  width: 100%;
+  min-height: 44px;
+  border: calc(3 * var(--u)) solid #161616;
+  border-radius: calc(10 * var(--u));
+  color: #fff;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: calc(22 * var(--u));
+  padding: calc(4 * var(--u)) 0 calc(1 * var(--u));
+  cursor: pointer;
+}
+.tr-b.green { background: linear-gradient(#8dff5a, #3fc24a); }
+.tr-b.blue { background: linear-gradient(#7fd0ff, #2f9bff); }
+.tr-b.grey { background: linear-gradient(#e6e8ec, #a9adb5); }
+
+/* Small screens --------------------------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  .sh-restock,
+  .sh-quiver span {
+    display: none;
+  }
+  .sh-wallet {
+    font-size: calc(18 * var(--u));
+    padding: 0 calc(8 * var(--u));
+  }
+  .dt-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dt-row {
+    flex-wrap: wrap;
+  }
+  .dt-row .dt-b:first-child {
+    flex-basis: 100%;
+  }
+  .dt-b,
+  .dt-b.small {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: calc(18 * var(--u));
+  }
+  .dt-foot {
+    flex-wrap: wrap;
+  }
+  .dt-foot .fbtn {
+    flex: 1 1 40%;
+    font-size: calc(18 * var(--u));
+  }
+  .pn-tabs.grp button {
+    flex: 1;
+    padding-left: 0;
+    padding-right: 0;
+    font-size: calc(18 * var(--u));
+  }
+}
+@media (min-width: 761px) and (max-height: 520px) {
+  .dt-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .sh-restock {
+    display: none;
+  }
+}
+
+/* Big carousel cards: a wider picture so the details fit without scrolling. */
+.sk-card.big .sk-pic {
+  aspect-ratio: 2.3;
+}
+.sk-card.big {
+  gap: calc(4 * var(--u));
+}

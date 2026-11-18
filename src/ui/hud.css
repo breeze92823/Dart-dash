@@ -1,0 +1,836 @@
+/* HUD: chunky toy-game UI. Relative units throughout; safe areas respected. */
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  font-family: 'Luckiest Guy', 'Fredoka', system-ui, sans-serif;
+  color: #fff;
+  --u: clamp(0.62px, 0.105vmin + 0.36px, 1.25px); /* 1 design px */
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --rb: 120px; /* bottom of Bloxity's reserved top-left areas, set by JS */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.hud * {
+  box-sizing: border-box;
+}
+.hud button {
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.ol {
+  --o: #151515;
+  text-shadow: 0 calc(3 * var(--u)) 0 var(--o), calc(3 * var(--u)) 0 0 var(--o), calc(-3 * var(--u)) 0 0 var(--o), 0 calc(-3 * var(--u)) 0 var(--o), calc(2 * var(--u)) calc(2 * var(--u)) 0 var(--o), calc(-2 * var(--u)) calc(2 * var(--u)) 0 var(--o), calc(2 * var(--u)) calc(-2 * var(--u)) 0 var(--o), calc(-2 * var(--u)) calc(-2 * var(--u)) 0 var(--o), 0 calc(5 * var(--u)) calc(3 * var(--u)) rgba(0, 0, 0, 0.35);
+}
+.hud .hide {
+  display: none !important;
+}
+
+/* --- Big side buttons (SHOP / INDEX / ZOO / SKIN) --------------------------------- */
+.side {
+  position: absolute;
+  top: max(calc(var(--rb) + 10px), 40vh);
+  display: flex;
+  flex-direction: column;
+  gap: calc(14 * var(--u));
+}
+.side.left {
+  left: calc(var(--safe-l) + 12px);
+}
+.side.right {
+  right: calc(var(--safe-r) + 12px);
+  top: max(calc(var(--trb, 0px) + 12px), 40vh);
+}
+.bigbtn {
+  position: relative;
+  width: calc(226 * var(--u));
+  height: calc(78 * var(--u));
+  border: calc(4 * var(--u)) solid #161616;
+  border-radius: calc(10 * var(--u));
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  padding: 0 calc(12 * var(--u)) 0 calc(8 * var(--u));
+  font-size: calc(38 * var(--u));
+  letter-spacing: calc(1 * var(--u));
+  overflow: hidden;
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 rgba(0, 0, 0, 0.22), inset 0 calc(4 * var(--u)) 0 rgba(255, 255, 255, 0.35), 0 calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.35);
+  transition: transform 0.08s;
+}
+.bigbtn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.12) 0 calc(18 * var(--u)), transparent calc(18 * var(--u)) calc(44 * var(--u)));
+  pointer-events: none;
+}
+.bigbtn:active {
+  transform: scale(0.94);
+}
+.bigbtn svg {
+  width: calc(64 * var(--u));
+  height: calc(64 * var(--u));
+  flex: none;
+  filter: drop-shadow(0 calc(2 * var(--u)) 0 rgba(0, 0, 0, 0.4));
+}
+.bigbtn span {
+  flex: 1;
+  text-align: center;
+  position: relative;
+}
+.bigbtn.shop { background: linear-gradient(#ffe07a, #f2b33a); }
+.bigbtn.index { background: linear-gradient(#7fd0ff, #2f9bff); }
+.bigbtn.zoo { background: linear-gradient(#8dff6a, #2fbf3a); }
+.bigbtn.skin { background: linear-gradient(#d39bff, #8a4fe8); }
+
+/* --- Bottom left: steps + money ------------------------------------------------- */
+.wallet {
+  position: absolute;
+  left: calc(var(--safe-l) + 12px);
+  bottom: calc(var(--safe-b) + 10px);
+  display: flex;
+  flex-direction: column;
+  gap: calc(4 * var(--u));
+}
+.wallet .row {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--u));
+}
+.wallet svg {
+  width: calc(80 * var(--u));
+  height: calc(80 * var(--u));
+  filter: drop-shadow(0 calc(3 * var(--u)) 0 rgba(0, 0, 0, 0.3));
+}
+.wallet .steps svg {
+  width: calc(70 * var(--u));
+  height: calc(70 * var(--u));
+}
+.wallet .steps b {
+  font-size: calc(40 * var(--u));
+  font-weight: 400;
+}
+.wallet .money b {
+  font-size: calc(62 * var(--u));
+  font-weight: 400;
+  color: #67ff4a;
+  line-height: 1;
+}
+.wallet .money i {
+  font-style: normal;
+  font-size: calc(36 * var(--u));
+  margin-left: calc(4 * var(--u));
+}
+.wallet .money.bump b {
+  animation: bump 0.25s ease-out;
+}
+@keyframes bump {
+  40% { transform: scale(1.12); }
+}
+
+/* --- Hotbar ---------------------------------------------------------------------- */
+.hotbar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-b) + 10px);
+  transform: translateX(-50%);
+  display: flex;
+  gap: calc(14 * var(--u));
+}
+.slot {
+  position: relative;
+  width: calc(82 * var(--u));
+  height: calc(82 * var(--u));
+  border-radius: calc(8 * var(--u));
+  background: rgba(40, 40, 46, 0.62);
+  border: calc(2 * var(--u)) solid rgba(255, 255, 255, 0.12);
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 600;
+  padding: 0;
+}
+.slot.on {
+  border-color: #fff;
+}
+.slot .n {
+  position: absolute;
+  left: calc(6 * var(--u));
+  top: calc(3 * var(--u));
+  font-size: calc(15 * var(--u));
+}
+.slot .x {
+  position: absolute;
+  right: calc(5 * var(--u));
+  top: calc(3 * var(--u));
+  font-size: calc(15 * var(--u));
+  color: #ffd23f;
+}
+.slot svg {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 58%;
+  height: 58%;
+  transform: translate(-50%, -50%);
+}
+.slot .nm {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(2 * var(--u));
+  font-size: calc(17 * var(--u));
+  white-space: nowrap;
+}
+.slot .nm.big {
+  font-size: calc(22 * var(--u));
+}
+
+/* --- Top right: battle pass, gifts, boosts, goal ---------------------------------- */
+.topright {
+  position: absolute;
+  right: calc(var(--safe-r) + 12px);
+  top: calc(var(--safe-t) + 12px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(6 * var(--u));
+}
+.tr-row {
+  display: flex;
+  align-items: center;
+  gap: calc(10 * var(--u));
+}
+.bp {
+  position: relative;
+  min-width: calc(190 * var(--u));
+  padding: calc(5 * var(--u)) calc(16 * var(--u)) calc(9 * var(--u));
+  border-radius: 999px;
+  background: #2b2b33;
+  border: calc(3 * var(--u)) solid #f2b33a;
+  font-size: calc(18 * var(--u));
+  color: #ffd23f;
+}
+.bp .bar {
+  position: absolute;
+  left: calc(14 * var(--u));
+  right: calc(14 * var(--u));
+  bottom: calc(5 * var(--u));
+  height: calc(5 * var(--u));
+  border-radius: 99px;
+  background: #111;
+  overflow: hidden;
+}
+.bp .bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #ffd23f;
+}
+.ready {
+  padding: calc(6 * var(--u)) calc(14 * var(--u));
+  border-radius: 999px;
+  background: #2b2b33;
+  border: calc(3 * var(--u)) solid #3a3a44;
+  font-size: calc(24 * var(--u));
+  color: #8dff6a;
+}
+.ready.wait {
+  color: #cfd3dc;
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 700;
+}
+.iconbtn {
+  position: relative;
+  width: calc(56 * var(--u));
+  height: calc(56 * var(--u));
+  padding: 0;
+  border: none;
+  background: none;
+}
+.iconbtn svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 calc(3 * var(--u)) 0 rgba(0, 0, 0, 0.35));
+}
+.iconbtn .dot {
+  position: absolute;
+  right: calc(-4 * var(--u));
+  top: calc(-6 * var(--u));
+  width: calc(24 * var(--u));
+  height: calc(24 * var(--u));
+  border-radius: 50%;
+  background: #ff2e2e;
+  border: calc(3 * var(--u)) solid #fff;
+  font-size: calc(15 * var(--u));
+  line-height: calc(18 * var(--u));
+  text-align: center;
+}
+.boost {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--u));
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: calc(29 * var(--u));
+  color: #b7ff4a;
+}
+.boost .ic {
+  position: relative;
+  width: calc(48 * var(--u));
+  height: calc(48 * var(--u));
+}
+.boost .ic svg {
+  width: 100%;
+  height: 100%;
+}
+.boost .price {
+  position: absolute;
+  left: 50%;
+  bottom: calc(-10 * var(--u));
+  transform: translateX(-50%);
+  padding: calc(1 * var(--u)) calc(7 * var(--u));
+  border-radius: 99px;
+  background: #24242b;
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 700;
+  font-size: calc(14 * var(--u));
+  color: #8dff6a;
+  white-space: nowrap;
+  text-shadow: none;
+}
+.boost.active {
+  color: #ffd23f;
+}
+.goal {
+  width: calc(300 * var(--u));
+  margin-top: calc(6 * var(--u));
+  padding: calc(6 * var(--u)) calc(12 * var(--u)) calc(9 * var(--u));
+  border-radius: calc(10 * var(--u));
+  background: rgba(38, 40, 48, 0.88);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 30%, transparent 32%);
+  background-size: calc(14 * var(--u)) calc(14 * var(--u));
+  border: calc(3 * var(--u)) solid #15161a;
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 700;
+}
+.goal h4 {
+  margin: 0;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-weight: 400;
+  font-size: calc(22 * var(--u));
+  color: #ffd23f;
+}
+.goal p {
+  margin: calc(1 * var(--u)) 0 calc(5 * var(--u));
+  font-size: calc(19 * var(--u));
+}
+.goal .gbar {
+  position: relative;
+  height: calc(22 * var(--u));
+  border-radius: 99px;
+  background: #15161a;
+  overflow: hidden;
+}
+.goal .gbar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: linear-gradient(#7dff5a, #3fc22a);
+  border-radius: 99px;
+  transition: width 0.3s;
+}
+.goal .gbar b {
+  position: relative;
+  display: block;
+  text-align: center;
+  font-size: calc(16 * var(--u));
+  line-height: calc(22 * var(--u));
+}
+.goal.done {
+  animation: goalpop 0.6s ease-out;
+}
+@keyframes goalpop {
+  30% { transform: scale(1.08); box-shadow: 0 0 calc(30 * var(--u)) #ffd23f; }
+}
+.mini {
+  display: flex;
+  gap: calc(8 * var(--u));
+}
+.mini .iconbtn {
+  width: calc(40 * var(--u));
+  height: calc(40 * var(--u));
+  border-radius: 50%;
+  background: rgba(30, 32, 40, 0.65);
+  padding: calc(7 * var(--u));
+}
+
+/* --- Event banner -------------------------------------------------------------------- */
+.event {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--safe-t) + 70px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: calc(12 * var(--u));
+  padding: calc(8 * var(--u)) calc(18 * var(--u)) calc(8 * var(--u)) calc(10 * var(--u));
+  border-radius: calc(10 * var(--u));
+  background: rgba(38, 40, 52, 0.92);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 30%, transparent 32%);
+  background-size: calc(14 * var(--u)) calc(14 * var(--u));
+  border: calc(3 * var(--u)) solid #15161a;
+  min-width: calc(440 * var(--u));
+}
+.event .ev-ic {
+  width: calc(58 * var(--u));
+  height: calc(58 * var(--u));
+  border-radius: calc(8 * var(--u));
+  background: rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(34 * var(--u));
+}
+.event .ev-t {
+  flex: 1;
+  font-size: calc(26 * var(--u));
+  line-height: 1.05;
+}
+.event .ev-s {
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 700;
+  font-size: calc(18 * var(--u));
+  color: #ffd23f;
+}
+.event .ev-time {
+  font-size: calc(42 * var(--u));
+}
+.hud.aiming .event {
+  left: calc(var(--safe-l) + 12px);
+  top: 40%;
+  transform: none;
+  min-width: 0;
+  max-width: 34vw;
+}
+.hud.aiming .event .ev-t {
+  font-size: calc(18 * var(--u));
+}
+
+/* --- Center messages ------------------------------------------------------------------- */
+.announce {
+  position: absolute;
+  left: 50%;
+  top: 28%;
+  transform: translateX(-50%);
+  width: 92vw;
+  text-align: center;
+  font-size: calc(44 * var(--u));
+  line-height: 1.1;
+  color: #ffe14a;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.announce.show {
+  opacity: 1;
+  animation: annpop 0.35s ease-out;
+}
+@keyframes annpop {
+  from { transform: translateX(-50%) scale(0.6); }
+}
+.toast {
+  position: absolute;
+  left: 50%;
+  top: 76%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(6 * var(--u));
+  width: 94vw;
+}
+.toast div {
+  font-size: calc(30 * var(--u));
+  text-align: center;
+  animation: toastin 0.25s ease-out;
+}
+.toast div.err {
+  color: #ff7a6a;
+}
+@keyframes toastin {
+  from { transform: translateY(calc(16 * var(--u))); opacity: 0; }
+}
+.banner {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--safe-t) + 80px);
+  transform: translateX(-50%);
+  padding: calc(12 * var(--u)) calc(40 * var(--u));
+  border-radius: calc(10 * var(--u));
+  background: linear-gradient(#8de86a, #4fbf3a);
+  border: calc(4 * var(--u)) solid #2c7a22;
+  font-size: calc(40 * var(--u));
+  white-space: nowrap;
+  animation: annpop 0.35s ease-out;
+}
+
+/* NEW SPECIES! card: header, portrait with sparkles, name, rarity. */
+.newsp {
+  position: absolute;
+  left: 30%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  animation: nsin 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+.newsp.out {
+  transition: opacity 0.4s, transform 0.4s;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.85);
+}
+.newsp .ns-h {
+  font-size: calc(54 * var(--u));
+  color: #ffe14a;
+  white-space: nowrap;
+  animation: nswob 1.2s ease-in-out infinite;
+}
+.newsp .ns-pic {
+  position: relative;
+  width: calc(260 * var(--u));
+  height: calc(221 * var(--u));
+}
+.newsp .ns-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 calc(5 * var(--u)) 0 rgba(0, 0, 0, 0.35));
+}
+.newsp .ns-pic i {
+  position: absolute;
+  font-style: normal;
+  color: #fff;
+  font-size: calc(34 * var(--u));
+  text-shadow: 0 0 calc(8 * var(--u)) #fff;
+  animation: nstw 1.1s ease-in-out infinite;
+}
+.newsp .ns-pic i:nth-of-type(1) { left: 22%; top: 6%; }
+.newsp .ns-pic i:nth-of-type(2) { right: 8%; top: 18%; animation-delay: 0.35s; font-size: calc(24 * var(--u)); }
+.newsp .ns-pic i:nth-of-type(3) { left: 42%; bottom: 4%; animation-delay: 0.7s; }
+.newsp .ns-n {
+  font-size: calc(46 * var(--u));
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.newsp .ns-r {
+  font-size: calc(36 * var(--u));
+  text-transform: lowercase;
+  margin-top: calc(-4 * var(--u));
+}
+@keyframes nsin {
+  from { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+}
+@keyframes nswob {
+  50% { transform: rotate(-3deg) scale(1.05); }
+}
+@keyframes nstw {
+  0%, 100% { transform: scale(0.4) rotate(0); opacity: 0.3; }
+  50% { transform: scale(1.1) rotate(45deg); opacity: 1; }
+}
+@media (max-width: 640px), (max-aspect-ratio: 3/4) {
+  .newsp {
+    left: 50%;
+    top: 46%;
+  }
+}
+
+/* --- Aim mode ----------------------------------------------------------------------- */
+.aim {
+  position: absolute;
+  inset: 0;
+}
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(30 * var(--u));
+  height: calc(30 * var(--u));
+  transform: translate(-50%, -50%);
+}
+.crosshair::before,
+.crosshair::after {
+  content: '';
+  position: absolute;
+  background: #fff;
+  box-shadow: 0 0 0 calc(1.5 * var(--u)) rgba(0, 0, 0, 0.6);
+}
+.crosshair::before {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: calc(3 * var(--u));
+  transform: translateX(-50%);
+}
+.crosshair::after {
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: calc(3 * var(--u));
+  transform: translateY(-50%);
+}
+.crosshair.lock::before,
+.crosshair.lock::after {
+  background: #ff5a4a;
+}
+.scope {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 0, transparent calc(47vmin - 2px), var(--scope-ring, #1b1d1f) calc(47vmin - 1px), var(--scope-ring, #1b1d1f) 47.8vmin, rgba(10, 40, 12, 0.72) calc(47.8vmin + 1px));
+}
+.scope svg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 94vmin;
+  height: 94vmin;
+  transform: translate(-50%, -50%);
+}
+.dist {
+  position: absolute;
+  right: calc(var(--safe-r) + 18px);
+  top: calc(var(--safe-t) + 14px);
+  font-size: calc(46 * var(--u));
+}
+.hints {
+  position: absolute;
+  left: calc(var(--safe-l) + 18px);
+  bottom: calc(var(--safe-b) + 100 * var(--u));
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 700;
+  font-size: calc(20 * var(--u));
+  line-height: 1.3;
+}
+.back {
+  position: absolute;
+  left: calc(var(--safe-l) + 18px);
+  bottom: calc(var(--safe-b) + 18px);
+  width: calc(150 * var(--u));
+  height: calc(66 * var(--u));
+  border: calc(4 * var(--u)) solid #161616;
+  border-radius: calc(8 * var(--u));
+  background: linear-gradient(#ff7a6a, #e8392a);
+  font-size: calc(30 * var(--u));
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 rgba(0, 0, 0, 0.2), inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.35);
+}
+.aimbtns {
+  position: absolute;
+  right: calc(var(--safe-r) + 18px);
+  bottom: calc(var(--safe-b) + 18px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(12 * var(--u));
+}
+.ammo {
+  font-size: calc(32 * var(--u));
+  color: #ffd23f;
+  margin-bottom: calc(4 * var(--u));
+}
+.ammo.out {
+  color: #ff5a4a;
+  animation: wlblink 0.5s steps(2) infinite;
+}
+.scopebtn,
+.zoombtn,
+.shoot {
+  border: calc(4 * var(--u)) solid #161616;
+  border-radius: calc(8 * var(--u));
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 rgba(0, 0, 0, 0.2), inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.35);
+}
+.scopebtn {
+  width: calc(146 * var(--u));
+  height: calc(62 * var(--u));
+  background: linear-gradient(#7fd0ff, #2f9bff);
+  font-size: calc(28 * var(--u));
+}
+.zooms {
+  display: flex;
+  gap: calc(6 * var(--u));
+}
+.zoombtn {
+  width: calc(70 * var(--u));
+  height: calc(62 * var(--u));
+  font-size: calc(40 * var(--u));
+  line-height: 1;
+  background: linear-gradient(#7fd0ff, #2f9bff);
+}
+.zoombtn.plus {
+  background: linear-gradient(#e6e8ec, #a9adb5);
+}
+.shoot {
+  width: calc(150 * var(--u));
+  height: calc(150 * var(--u));
+  background: linear-gradient(#d5d8de, #8e939c);
+  font-size: calc(36 * var(--u));
+  position: relative;
+  overflow: hidden;
+}
+.shoot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.14) 0 calc(18 * var(--u)), transparent calc(18 * var(--u)) calc(44 * var(--u)));
+}
+.shoot span {
+  position: relative;
+}
+.shoot.hot {
+  background: linear-gradient(#ff8a7a, #e8392a);
+}
+.shoot:active,
+.back:active,
+.scopebtn:active,
+.zoombtn:active {
+  transform: scale(0.93);
+}
+.shoot.cool {
+  filter: brightness(0.8);
+}
+
+/* --- Aim-mode visibility ----------------------------------------------------------------- */
+.hud .aim {
+  display: none;
+}
+.hud.aiming .aim {
+  display: block;
+}
+.hud.aiming .side,
+.hud.aiming .topright,
+.hud.aiming .wallet .steps {
+  display: none;
+}
+.hud.aiming .wallet {
+  bottom: calc(var(--safe-b) + 14px);
+  left: calc(var(--safe-l) + 30px + 160 * var(--u));
+}
+.hud.aiming .wallet .money b {
+  font-size: calc(48 * var(--u));
+}
+.hud.aiming .wallet svg {
+  width: calc(60 * var(--u));
+  height: calc(60 * var(--u));
+}
+.hud:not(.scoped) .scope,
+.hud:not(.scoped) .dist,
+.hud:not(.scoped) .zooms {
+  display: none;
+}
+.hud.scoped .scopebtn,
+.hud.scoped .crosshair {
+  display: none;
+}
+.hud.carrying .bigbtn,
+.hud.menu .side {
+  opacity: 0.9;
+}
+
+/* --- Phones ------------------------------------------------------------------------------ */
+@media (max-height: 520px), (max-width: 640px) {
+  .hud {
+    --u: clamp(0.5px, 0.12vmin + 0.2px, 0.9px);
+  }
+  .side {
+    top: max(calc(var(--rb) + 6px), 34vh);
+  }
+  .touch-ui .hud .side.left {
+    top: max(calc(var(--rb) + 6px), 28vh);
+  }
+  .hints {
+    display: none;
+  }
+  /* One row: money, then steps. */
+  .wallet {
+    flex-direction: row-reverse;
+    align-items: center;
+    gap: calc(14 * var(--u));
+  }
+  .side.left {
+    max-height: calc(100dvh - var(--rb) - 90px);
+  }
+}
+.touch-ui .hud .hints {
+  display: none;
+}
+.touch-ui .hud .hotbar {
+  bottom: calc(var(--safe-b) + 8px);
+}
+
+/* Short landscape phones: everything a size down so the right-hand buttons clear the
+   touch jump cluster; the goal drops its header. */
+@media (max-height: 520px) {
+  .hud {
+    --u: clamp(0.45px, 0.1vmin + 0.12px, 0.8px);
+  }
+  .goal h4 {
+    display: none;
+  }
+  .goal {
+    width: calc(260 * var(--u));
+  }
+}
+/* Portrait touch: the hotbar and wallet sit above the joystick and the jump cluster. */
+@media (max-aspect-ratio: 3/4) {
+  .touch-ui .hud .hotbar {
+    left: auto;
+    right: calc(var(--safe-r) + 12px);
+    transform: none;
+    bottom: calc(var(--safe-b) + 150px);
+  }
+  .touch-ui .hud .wallet {
+    bottom: calc(var(--safe-b) + 150px);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .touch-ui .hud.aiming .wallet {
+    bottom: calc(var(--safe-b) + 14px);
+  }
+  .touch-ui .hud.aiming .hotbar {
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(var(--safe-b) + 96px);
+  }
+}
+
+/* Settings > Interface off: everything but the settings gear (and aiming) hides. */
+.hud.noui .side,
+.hud.noui .wallet,
+.hud.noui .hotbar,
+.hud.noui .goal,
+.hud.noui .boost,
+.hud.noui .bp,
+.hud.noui .ready,
+.hud.noui .pt,
+.hud.noui .event,
+.hud.noui .newsp {
+  visibility: hidden;
+}
+body.noui .wl-layer {
+  visibility: hidden;
+}
+.iconbtn.gear svg {
+  transition: transform 0.3s;
+}
+.iconbtn.gear:active svg {
+  transform: rotate(60deg);
+}
