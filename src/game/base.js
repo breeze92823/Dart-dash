@@ -312,6 +312,7 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
       if (!Number.isInteger(slot) || slot < 0 || slot >= BASES.length || slot === mySlot) return false
       live.bases[mySlot].marker.el.classList.remove('pulse')
       mySlot = slot
+      mine().marker.html = baseMarkerHtml('YOUR BASE')
       inZone.clear()
       aimMill()
       for (const a of pen) {

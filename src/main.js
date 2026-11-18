@@ -1,9 +1,10 @@
+import * as THREE from 'three'
 import { ACESFilmicToneMapping, Clock, Group, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three'
-import { BATTLE_PASS, CAMERA, LANE, MUTATIONS, SKINS, WEAPONS, WORLDS, graphicsPreset, RENDER } from './config.js'
+import { AIM, AREA_IDS, BASES, BATTLE_PASS, CAMERA, FOG, LANE, LANE_AREAS, MUTATIONS, NET, SKINS, STUD, WEAPONS, WORLDS, areaAt, graphicsPreset, RENDER } from './config.js'
 import * as bloxity from './bloxity.js'
 import { install as installInput, onKey, setLockPolicy, isLocked } from './input.js'
 import { installTouch } from './touch.js'
-import { createPlayerBody, interpolate as interpolatePlayer, player, resetPlayer, respawn } from './player.js'
+import { createPlayerBody, interpolate as interpolatePlayer, player, resetPlayer, respawn, setSpawn } from './player.js'
 import { setCameraSensitivity, setView, syncYawToPlayer, update as updateCamera } from './camera.js'
 import { onModeChanged, toggleMode } from './modes.js'
 import { bodyCount, initPhysics, stepPhysics } from './physics.js'
@@ -13,11 +14,11 @@ import { setNeonBloom } from './propkit.js'
 import { buildDefaultCharacter, loadBaseCharacter } from './avatar/character.js'
 import { applyProportions, attachEquippedAccessories } from './avatar/loader.js'
 import { disposeAnimator, makeAnimator } from './avatar/animator.js'
+import { EmotePlayer } from './avatar/emotes.js'
 import { buildWorld } from './world/world.js'
 import { buildHub } from './world/hub.js'
 import { buildLane } from './world/lane.js'
-import { buildBarrier } from './world/barrier.js'
-import { AREAS } from './world/areas.js'
+import { buildBarriers } from './world/barrier.js'
 import { weaponThumb } from './ui/thumbs.js'
 import { initParticles, setParticleQuality, updateParticles } from './fx/particles.js'
 import { updateLabels } from './fx/labels.js'
@@ -29,12 +30,15 @@ import { createBase } from './game/base.js'
 import { createEvents } from './game/events.js'
 import { createBots } from './game/bots.js'
 import { createCosmetics } from './game/cosmetics.js'
-import { addMoney, addXp, emit, fmt, fmtTime, on, save, skinOwned, state, checkGoals, worldUnlocked } from './game/state.js'
+import { createRemotePlayers, packAvatar } from './game/remotePlayers.js'
+import { createRemoteBases } from './game/remoteBases.js'
+import { createDanger } from './game/danger.js'
+import { addMoney, addXp, emit, enterArea, fmt, fmtTime, on, save, skinOwned, state, checkGoals, worldUnlocked } from './game/state.js'
 import * as playtime from './game/playtime.js'
-import { initNet, net } from './net.js'
+import { initNet, net, sendAvatar, sendBase, sendEmote, sendPose, setJoinPresence } from './net.js'
 import * as hud from './ui/hud.js'
 import { closePanel, isPanelOpen, onPanelChange, openPanel, tickShop } from './ui/panels.js'
-import { installAudio, setBusOn, setMusic, sfx, updateAudio } from './audio/index.js'
+import { installAudio, isMuted, setBusOn, setMuted, setMusic, sfx, updateAudio } from './audio/index.js'
 
 // Boot order: Bloxity SDK -> renderer -> Rapier (async wasm) -> world, hub, lane,
 // player -> avatar (async) -> game systems -> loop. The SDK is optional at every step.
@@ -94,7 +98,8 @@ bloxity.loadingStep('Building the meadow')
 const world = buildWorld(scene)
 const hub = buildHub(scene)
 const lane = buildLane(scene)
-const barrier = buildBarrier(scene)
+const barriers = buildBarriers(scene)
+setSpawn(BASES[0].spawn, BASES[0].facing)
 createPlayerBody()
 syncYawToPlayer()
 initParticles(scene, preset.particles)
@@ -143,6 +148,14 @@ bloxity.subscribeAuth((s) => {
 bloxity.onAvatarChanged(loadAvatar)
 bloxity.onProportionsChanged(() => applyProportions(avatar, bloxity.getProportions()))
 bloxity.onRespawnRequest(respawn)
+// Bloxity emotes: the portal menu's pick plays on the avatar and is replayed on everyone's screen.
+const localEmote = new EmotePlayer(() => animator?.rig?.bindings ?? [])
+let emoteClips = new Map()
+bloxity.loadEmotes().then((list) => (emoteClips = new Map(list.map((e) => [e.id, e.clip]))))
+bloxity.onEmote((id) => {
+  if (aim.active || !localEmote.play(id, emoteClips.get(id))) return
+  sendEmote(id)
+})
 const playerName = () => {
   const n = bloxity.displayName()
   return n === 'Offline' ? 'You' : n
@@ -168,6 +181,44 @@ const base = createBase({
   getAnimator: () => animator,
   playerName,
 })
+// Angry animals: entering the lane without a sleeping catch makes them attack (game/danger.js).
+const danger = createDanger({ animals, base, hud, playerGroup })
+// The other players of the room (net.players) and their bases (pen animals, treadmill, signs).
+const remotePlayers = createRemotePlayers({ scene })
+const remoteBases = createRemoteBases({ scene, live: hub.live, getMySlot: () => base.slot, remotePlayers })
+// Bloxity chat: bubbles over the speakers (the SDK draws the chat UI itself).
+bloxity.onChat((m) => {
+  if (m?.isLocalPlayer) bloxity.attachChatBubble(THREE, playerGroup, bloxity.chatBubbleText(m), 2.6)
+  else remotePlayers.onChat(m)
+})
+// Ad breaks (Bloxity can start one at any time): pause the simulation and mute until it ends.
+let adPaused = false
+let mutedBeforeAd = false
+bloxity.onAdBreak((on) => {
+  if (on === adPaused) return
+  adPaused = on
+  if (on) {
+    mutedBeforeAd = isMuted()
+    setMuted(true)
+    if (isLocked()) document.exitPointerLock?.()
+  } else setMuted(mutedBeforeAd)
+})
+// Where this player's base is: the server's slot assignment moves the pen, signs and spawn there.
+let placedSlot = -1
+function syncSlot() {
+  const s = net.slot
+  if (s < 0 || s === placedSlot) return
+  const first = placedSlot < 0
+  placedSlot = s
+  base.setSlot(s)
+  setSpawn(BASES[s].spawn, BASES[s].facing)
+  if (!base.carrying) respawn() // walk out of the gate of your own base
+  hud.toast(`Your base is number ${s + 1}${first ? '' : ' now'}`, { check: true })
+}
+setJoinPresence(
+  () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.facing, speed: 0 }),
+  () => (bloxity.authState.user ? packAvatar(bloxity.getEquippedAvatar(), bloxity.getProportions()) : ''),
+)
 let firstPerson = false
 const aim = createAim({
   camera,
@@ -204,6 +255,17 @@ hud.onAction('bp', () => openPanel('bp'))
 hud.onAction('gift', () => openPanel('gift'))
 hud.onAction('playtime', () => openPanel('playtime'))
 hud.onAction('settings', () => openPanel('settings'))
+// Invite: a link into this very room (Bloxity builds it; friends also see the room in the portal).
+hud.onAction('invite', async () => {
+  const link = bloxity.inviteLink(net.room?.roomId)
+  if (!link) return hud.toast('Invites work inside Bloxity', { error: true })
+  try {
+    await navigator.clipboard.writeText(link)
+    hud.toast('Invite link copied! Up to 6 players per room', { check: true })
+  } catch {
+    hud.toast(link, { seconds: 8 })
+  }
+})
 hud.onAction('luck', () => openPanel('shop', 'boosts'))
 hud.onAction('cash', () => openPanel('shop', 'boosts'))
 hud.onAction('weapon', () => aim.cycleWeapon())
@@ -222,50 +284,77 @@ applySettings()
 const applySkin = () => hud.setScopeTint(SKINS[state.cosmetics.skin]?.scope.tint ?? '#1b1d1f')
 on('cosmetic', applySkin)
 applySkin()
-// Worlds: the lane is dressed in the area's look (areas.js: ground, cliff caps, props, pond), the
-// strip past the barrier in the next area's, and the lane fills with the area's animals.
-let laneWorld = state.world
-function applyWorld(announce) {
-  const ids = Object.keys(WORLDS)
-  const next = ids[ids.indexOf(state.world) + 1] ?? null
-  lane.setArea(state.world, next)
-  world.setGround(AREAS[state.world] ?? AREAS.meadow, next && AREAS[next])
-  if (laneWorld === state.world) return
-  laneWorld = state.world
-  animals.reroll()
-  if (announce) {
-    hud.announce(`WELCOME TO THE ${WORLDS[state.world].name.toUpperCase()}!`, '#8dff6a', 3.5)
-    sfx.fanfare()
-  }
+// Areas: every world lies along the lane (Meadow .. Volcano, config LANE_AREAS). Walking into one
+// makes it the current world; the portal's TRAVEL drops you at an area's gate.
+function trackArea() {
+  const p = player.position
+  const id = p.y < -2 ? areaAt(p.z) : null
+  if (!id || id === state.world || !worldUnlocked(id)) return
+  enterArea(id)
+  hud.announce(`WELCOME TO THE ${WORLDS[id].name.toUpperCase()}!`, '#8dff6a', 3)
+  sfx.fanfare()
 }
-on('world', () => applyWorld(true))
-applyWorld(false)
-// The green barrier at the lane's far end names the next area and the gun that opens it.
+on('travel', (id) => {
+  const A = LANE_AREAS[id]
+  if (!A) return
+  closePanel()
+  aim.exit()
+  // Just inside the area, facing down the lane (the Meadow: at the foot of the slope).
+  resetPlayer({ x: 0, y: LANE.y + 0.2, z: A.maxZ - (A.index === 0 ? 4 : 3) }, Math.PI)
+  syncYawToPlayer()
+  trackArea()
+})
+// The green barriers: each names the area behind it and the gun that opens it; owning the gun
+// opens it. A newly opened area fills up with its animals right away.
 let barrierKey = ''
 function applyBarrier() {
-  const ids = Object.keys(WORLDS)
-  const next = ids[ids.indexOf(state.world) + 1]
-  const locked = next ? !worldUnlocked(next) : false
-  const key = `${next}|${locked}|${state.cosmetics.skin}`
+  const key = `${AREA_IDS.map((id) => (worldUnlocked(id) ? 1 : 0)).join('')}|${state.cosmetics.skin}`
   if (key === barrierKey) return
   barrierKey = key
-  if (!next) return barrier.show({ final: true })
-  const gun = WORLDS[next].weapon
-  barrier.show({ area: WORLDS[next].name.toUpperCase(), locked, gun: WEAPONS[gun].name.toUpperCase(), price: fmt(WEAPONS[gun].price), imgSrc: locked ? weaponThumb(gun, state.cosmetics.skin) : null })
+  AREA_IDS.slice(1).forEach((next, i) => {
+    const gun = WORLDS[next].weapon
+    const locked = !worldUnlocked(next)
+    barriers.show(i, { area: WORLDS[next].name.toUpperCase(), locked, gun: WEAPONS[gun].name.toUpperCase(), price: fmt(WEAPONS[gun].price), imgSrc: locked ? weaponThumb(gun, state.cosmetics.skin) : null })
+  })
+  animals.fill()
 }
-for (const ev of ['world', 'worlds', 'weapon', 'cosmetic', 'hydrate']) on(ev, applyBarrier)
+for (const ev of ['worlds', 'weapon', 'cosmetic', 'hydrate']) on(ev, applyBarrier)
 applyBarrier()
+// View distance: short normally (the far areas are not drawn at all), the weapon's whole range
+// while scoped so every animal it can reach is sharp. Eased so the fog does not pop.
+const view = { near: FOG.near, far: FOG.far }
+function applyView(dt) {
+  let near = FOG.near
+  let far = FOG.far
+  if (aim.active && aim.scoped) {
+    const range = (WEAPONS[state.weapon]?.range ?? 0) * STUD
+    near = Math.max(near, range + AIM.scopeView.clear)
+    far = Math.max(far, near + AIM.scopeView.fade)
+  }
+  const k = 1 - Math.exp(-6 * dt)
+  view.near += (near - view.near) * k
+  view.far += (far - view.far) * k
+  if (scene.fog) {
+    scene.fog.near = view.near
+    scene.fog.far = view.far
+  }
+  lane.cull(camera.position.z, view.far + 10)
+  ctx.camZ = camera.position.z
+  ctx.viewDist = view.far + 10
+}
 // A whole save loaded (the server's): redraw everything that reads it.
 on('hydrate', () => {
   applySettings()
   applySkin()
-  applyWorld(false)
   hud.refreshHud()
   emit('weapon')
   checkGoals()
 })
 onPanelChange((p) => {
   if (p && isLocked()) document.exitPointerLock?.()
+  // Banner ads only while a menu is open, never over gameplay.
+  if (p) bloxity.adScreen('panel')
+  else bloxity.hideAdScreen()
 })
 
 onModeChanged((mode) => {
@@ -307,10 +396,50 @@ let boardTimer = 0
 let playTimer = 0
 let callTimer = 2
 const near = (p, r) => camera.position.distanceToSquared(p) < r * r
-const ctx = { now: 0, near, showTags: false }
+const ctx = { now: 0, near, showTags: false, camZ: 0, viewDist: FOG.far, camera }
 const tmp = new Vector3()
 
+let poseTimer = 0
+let baseTimer = 0
+const r2 = (v) => Math.round(v * 100) / 100
+
+// What the others need to draw this player: sent ~10x/s (only when it changed).
+function sendPresence(dt, speed) {
+  if (!net.connected) return
+  poseTimer -= dt
+  if (poseTimer <= 0) {
+    poseTimer = NET.poseEvery
+    const c = base.carrying
+    sendPose({
+      x: r2(player.position.x),
+      y: r2(player.position.y),
+      z: r2(player.position.z),
+      yaw: r2(player.facing),
+      speed: r2(speed),
+      tm: base.treadmillRunning,
+      aim: aim.active,
+      carry: c ? `${c.species}:${c.mutation || '_'}` : '',
+    })
+  }
+  baseTimer -= dt
+  if (baseTimer <= 0) {
+    baseTimer = NET.baseEvery
+    sendBase({
+      animals: state.pen.animals.map((a) => ({ species: a.species, mutation: a.mutation || null })),
+      level: state.pen.level,
+      tml: state.treadmill.unlocked ? state.treadmill.level : -1,
+      steps: state.steps,
+      trail: state.cosmetics.trail || '',
+      aura: state.cosmetics.aura || '',
+      weapon: state.weapon || '',
+      world: state.world || '',
+    })
+    if (bloxity.authState.user) sendAvatar(packAvatar(bloxity.getEquippedAvatar(), bloxity.getProportions()))
+  }
+}
+
 function frame(forcedDt) {
+  if (adPaused) return // an ad break: frozen until Bloxity ends it
   const dt = forcedDt ?? Math.min(clock.getDelta(), 0.1)
   const elapsed = forcedDt != null ? (simTime += forcedDt) : clock.elapsedTime
   ctx.now = elapsed
@@ -322,12 +451,20 @@ function frame(forcedDt) {
   playerGroup.rotation.y = player.facing
   const speed = Math.hypot(player.velocity.x, player.velocity.z)
   animator?.update(dt, { grounded: player.grounded, speed, verticalVelocity: player.velocity.y, turn: 0 })
+  if (speed > 1.5 || aim.active) localEmote.stop() // moving or aiming ends an emote
+  localEmote.update(dt)
+  syncSlot()
 
   aim.update(dt, { carrying: !!base.carrying, menuOpen: isPanelOpen() })
   playerGroup.visible = !aim.active && !firstPerson
   if (aim.active) aim.updateCamera(dt)
-  else updateCamera(camera, dt)
+  else {
+    updateCamera(camera, dt)
+    camera.position.add(danger.shakeOffset)
+  }
 
+  applyView(dt)
+  trackArea()
   ctx.showTags = aim.active && aim.scoped
   animals.update(dt, ctx)
   darts.update(dt)
@@ -340,11 +477,15 @@ function frame(forcedDt) {
   }
   events.update(dt)
   bots.update(dt, ctx)
+  remotePlayers.update(dt)
+  remoteBases.update(dt, ctx)
+  sendPresence(dt, speed)
+  danger.update(dt)
   cosmetics.update(dt, { moving: speed > 1.5, visible: playerGroup.visible })
 
   // Hub life: the portal swirls, shop pads breathe, mutations shimmer.
   if (hub.live.portal?.userData.swirl) hub.live.portal.userData.swirl.uniforms.time.value = elapsed
-  barrier.update(elapsed)
+  barriers.update(elapsed)
   lane.update(elapsed)
   for (const d of hub.live.discs) {
     d.userData.ring.scale.setScalar(1 + Math.sin(elapsed * 2.5) * 0.04)
@@ -450,11 +591,12 @@ if (import.meta.env.DEV) {
     const d = c.sub(e)
     setView(Math.atan2(-d.x, -d.z), -Math.atan2(d.y, Math.hypot(d.x, d.z)))
   }
-  window.__game = { step, aimAt, darts, player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, state, animals, base, aim, events, bots, addMoney, LANE, net, playtime, openPanel,
-    // Preview an area's look without travelling (the save is untouched): __game.lookAs('volcano')
-    lookAs: (id, next = null) => {
-      lane.setArea(id, next)
-      world.setGround(AREAS[id], next && AREAS[next])
+  window.__game = { remotePlayers, remoteBases, step, aimAt, darts, player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, state, animals, base, aim, events, bots, addMoney, LANE, net, playtime, openPanel, danger,
+    lane, barriers,
+    // Jump to an area's gate, open or not (testing): __game.goArea('volcano')
+    goArea: (id) => {
+      const A = LANE_AREAS[id]
+      teleport(0, LANE.y + 0.2, A.maxZ - 3, Math.PI)
     },
   }
 }

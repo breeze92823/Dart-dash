@@ -1,9 +1,11 @@
-// The green barrier across the far (north) end of the lane: a glowing force field between two
-// pylons, solid to the player and to darts, with a big sign naming the next area and the gun
-// that opens it (main.js calls `show` whenever the world or the owned weapons change).
-import { DoubleSide, Mesh, PlaneGeometry, ShaderMaterial } from 'three'
-import { BARRIER, LANE } from '../config.js'
-import { solidBox } from '../propkit.js'
+// The green barriers between the lane's areas: at the far end of every area but the last, a
+// glowing force field between pylons, solid to the player, animals and darts, with a big sign
+// naming the next area and the gun that opens it. Owning that gun opens the gate: the field,
+// sign, rails, inner pylons and collider go, the two edge pylons stay as a gateway (main.js
+// calls `show(i, info)` whenever the owned weapons change).
+import { DoubleSide, Group, Mesh, PlaneGeometry, ShaderMaterial } from 'three'
+import { AREA_IDS, BARRIER, LANE, LANE_AREAS } from '../config.js'
+import { RAPIER, addFixed, world as physicsWorld } from '../physics.js'
 import { block, mat, signText } from './kit.js'
 import { textBoard } from './props.js'
 
@@ -81,44 +83,58 @@ function drawSign(ctx, w, h, info = null) {
   signText(ctx, `TO REACH ${info.area} · $${info.price} AT THE ARMORY`, textX, h * 0.8, { size: 44, width: 9, maxWidth: textW })
 }
 
-export function buildBarrier(scene) {
+// One gate across the lane at z (toward the area `next`).
+function buildGate(scene, field, z) {
   const W = LANE.maxX - LANE.minX
   const H = BARRIER.height
-  const z = BARRIER.z
-  const field = new ShaderMaterial({
-    ...FIELD,
-    transparent: true,
-    depthWrite: false,
-    side: DoubleSide,
-    uniforms: { time: { value: 0 }, size: { value: [W, H] } },
-  })
+  const cx = (LANE.minX + LANE.maxX) / 2
+  const closed = new Group() // everything that goes when the gate opens
+  scene.add(closed)
   const wall = new Mesh(new PlaneGeometry(W, H), field)
-  wall.position.set((LANE.minX + LANE.maxX) / 2, LANE.y + H / 2, z)
+  wall.position.set(cx, LANE.y + H / 2, z)
   wall.renderOrder = 2
-  scene.add(wall)
+  closed.add(wall)
   // Pylons at the ends and every so often, with a glowing rail along the top and bottom.
   const glow = mat('#7dff6a', { emissive: '#3fff4a', ei: 0.35, studs: false })
   const post = mat('#2b6b34', { rough: 0.6 })
   for (let i = 0; i <= 4; i++) {
     const x = LANE.minX + (W * i) / 4
-    block(scene, 1.6, H + 1, 1.6, post, x, LANE.y + (H + 1) / 2, z)
-    block(scene, 2.2, 1, 2.2, glow, x, LANE.y + H + 1.3, z)
+    const parent = i === 0 || i === 4 ? scene : closed
+    block(parent, 1.6, H + 1, 1.6, post, x, LANE.y + (H + 1) / 2, z)
+    block(parent, 2.2, 1, 2.2, glow, x, LANE.y + H + 1.3, z)
   }
-  block(scene, W, 0.5, 0.5, glow, (LANE.minX + LANE.maxX) / 2, LANE.y + H, z)
-  block(scene, W, 0.4, 0.8, glow, (LANE.minX + LANE.maxX) / 2, LANE.y + 0.2, z, { shadow: false })
-  // Solid to the player, animals' runs and darts.
-  solidBox(W / 2, H / 2 + 4, 0.6, (LANE.minX + LANE.maxX) / 2, LANE.y + H / 2 + 4, z)
+  block(closed, W, 0.5, 0.5, glow, cx, LANE.y + H, z)
+  block(closed, W, 0.4, 0.8, glow, cx, LANE.y + 0.2, z, { shadow: false })
 
   const S = BARRIER.sign
-  const sign = textBoard(scene, 0, LANE.y + S.y, z + 1.4, 0, S.w, S.h, 420, drawSign, { frame: '#3fc24a', depth: 0.6, posts: 0 })
+  const sign = textBoard(closed, 0, LANE.y + S.y, z + 1.4, 0, S.w, S.h, 420, drawSign, { frame: '#3fc24a', depth: 0.6, posts: 0 })
   for (const sx of [-S.w * 0.38, S.w * 0.38]) block(sign.group, 0.8, S.y, 0.8, '#2b6b34', sx, -S.y / 2, -0.2)
+
+  // Solid to the player, animals' runs and darts while closed.
+  let collider = null
+  const setSolid = (on) => {
+    if (on && !collider) collider = addFixed(RAPIER.ColliderDesc.cuboid(W / 2, H / 2 + 4, 0.6), { x: cx, y: LANE.y + H / 2 + 4, z })
+    else if (!on && collider) {
+      physicsWorld.removeCollider(collider, false)
+      collider = null
+    }
+  }
+  setSolid(true)
 
   let last = null
   const redraw = () => sign.redraw(last)
   document.fonts?.load?.('64px "Luckiest Guy"').then(redraw, () => null)
   return {
-    wall,
+    z,
+    closed,
+    get open() {
+      return !closed.visible
+    },
     show(info) {
+      const open = info?.locked === false
+      closed.visible = !open
+      setSolid(!open)
+      if (open) return
       last = info
       redraw()
       // The gun picture arrives as a data URL; redraw once it has decoded.
@@ -132,6 +148,25 @@ export function buildBarrier(scene) {
         }
         img.src = info.imgSrc
       }
+    },
+  }
+}
+
+// gates[i] stands at the far end of area AREA_IDS[i] and leads to AREA_IDS[i + 1].
+export function buildBarriers(scene) {
+  const W = LANE.maxX - LANE.minX
+  const field = new ShaderMaterial({
+    ...FIELD,
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+    uniforms: { time: { value: 0 }, size: { value: [W, BARRIER.height] } },
+  })
+  const gates = AREA_IDS.slice(0, -1).map((id) => buildGate(scene, field, LANE_AREAS[id].minZ))
+  return {
+    gates,
+    show(i, info) {
+      gates[i]?.show(info)
     },
     update(elapsed) {
       field.uniforms.time.value = elapsed

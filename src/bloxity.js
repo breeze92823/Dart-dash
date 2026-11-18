@@ -2,7 +2,7 @@
 // here may throw when the SDK is missing: a blocked sdk.bloxity.io leaves the
 // game fully playable on the default avatar and keyboard controls.
 // Docs: https://docs.bloxity.io/#html5
-import { GAME_SLUG, GAME_TITLE, SETTINGS, DEV_MODE, coerceSetting } from './config.js'
+import { GAME_SLUG, GAME_TITLE, SETTINGS, DEV_MODE, LEADERBOARDS, coerceSetting } from './config.js'
 
 export function sdk() {
   if (DEV_MODE) return null
@@ -24,6 +24,9 @@ const proportionListeners = new Set()
 const authListeners = new Set()
 const settingListeners = new Set()
 const respawnListeners = new Set()
+const emoteListeners = new Set()
+const breakListeners = new Set()
+const chatListeners = new Set()
 const unsubscribers = []
 
 function emit(listeners, ...args) {
@@ -60,6 +63,22 @@ export function onSetting(fn) {
 export function onRespawnRequest(fn) {
   respawnListeners.add(fn)
   return () => respawnListeners.delete(fn)
+}
+
+// Emotes (Legion.SDK.player 'play_emote'): fn(emoteId) when the player picks one in the portal menu.
+export function onEmote(fn) {
+  emoteListeners.add(fn)
+  return () => emoteListeners.delete(fn)
+}
+// Ad breaks: fn(true) when Bloxity starts one (pause the simulation, mute audio), fn(false) when it ends.
+export function onAdBreak(fn) {
+  breakListeners.add(fn)
+  return () => breakListeners.delete(fn)
+}
+// Chat messages Bloxity's own chat feed carries: fn({ userId, username, text, isGif, at, isLocalPlayer }).
+export function onChat(fn) {
+  chatListeners.add(fn)
+  return () => chatListeners.delete(fn)
 }
 
 // --- Auth ---------------------------------------------------------------
@@ -178,10 +197,12 @@ export function init() {
     }
 
     unsubscribers.push(
-      SDK.player.onEvent((event) => {
+      SDK.player.onEvent((event, data) => {
         if (event === 'respawn_request') emit(respawnListeners)
+        else if (event === 'play_emote' && typeof data === 'string') emit(emoteListeners, data)
       }),
     )
+    initFeatures(SDK)
 
     SDK.game.loadingStep('Building the island')
   } catch (err) {
@@ -380,4 +401,184 @@ export function requestFullscreen(on) {
   } catch {
     // Ignore.
   }
+}
+
+// --- Features: emotes, ads, leaderboards, chat, party -----------------------------------------------
+// Each is optional: an older SDK build or a blocked CDN just leaves the feature off.
+function initFeatures(SDK) {
+  const guard = (what, fn) => {
+    try {
+      fn()
+    } catch (err) {
+      console.warn(`[bloxity] ${what} unavailable`, err)
+    }
+  }
+  guard('emotes', () => SDK.game.registerFeature?.('emotes'))
+  guard('invites', () => SDK.game.registerFeature?.('play_with_friends'))
+  // Ad breaks can start at any moment: the game pauses and mutes until it ends.
+  guard('ad breaks', () => {
+    const a = SDK.ads
+    if (!a) return
+    for (const off of [a.onBreakStart?.(() => emit(breakListeners, true)), a.onBreakEnd?.(() => emit(breakListeners, false))]) {
+      if (typeof off === 'function') unsubscribers.push(off)
+    }
+    // Banner screens: the shop / menu panels get a side slot, gameplay stays clear.
+    a.declareScreens?.({
+      panel: { slots: [{ position: 'middle-right', sizes: ['300x250', '160x600'] }] },
+      results: {},
+      gameplay: {},
+    })
+  })
+  // Leaderboards (the portal's trophy button): the boards, defined once; the backend reports the scores.
+  guard('leaderboards', () => SDK.leaderboard?.define?.(LEADERBOARDS.map(({ id, label, order, mode, format, reset }) => ({ id, label, order, mode, format, reset }))))
+  // Bloxity draws the chat UI; the game only puts the bubbles over the speakers' heads.
+  guard('chat', () => {
+    const off = SDK.chat?.onMessage?.((m) => emit(chatListeners, m))
+    if (typeof off === 'function') unsubscribers.push(off)
+  })
+  // Party play: Bloxity-hosted servers using the matchmaker (maxClients) get it automatically.
+  guard('party', () => SDK.party?.enable?.({ maxPartySize: 6 }))
+}
+
+// The JWT the game server verifies with Bloxity (POST /v1/auth/game-token/verify); '' when signed out.
+export function getToken() {
+  try {
+    return sdk()?.auth?.getToken?.() || ''
+  } catch {
+    return ''
+  }
+}
+
+// --- Rewarded ads -------------------------------------------------------------------------------
+export function adsAvailable() {
+  try {
+    return !!sdk()?.ads?.isAvailable?.()
+  } catch {
+    return false
+  }
+}
+// Plays a rewarded ad: { status: 'completed' | 'skipped' | 'error' | 'disabled', rewardToken? }. Never throws.
+export async function showRewarded(placement) {
+  try {
+    const r = await sdk().ads.showRewarded(placement)
+    return r && typeof r === 'object' ? r : { status: 'error' }
+  } catch {
+    return { status: 'error' }
+  }
+}
+// Screen banners: 'menu' | 'lobby' | 'results' | 'panel' | 'gameplay'; hideAdScreen when it closes.
+export function adScreen(type) {
+  try {
+    sdk()?.ads?.screen?.(type)
+  } catch {
+    // Ignore.
+  }
+}
+export function hideAdScreen() {
+  try {
+    sdk()?.ads?.hideScreen?.()
+  } catch {
+    // Ignore.
+  }
+}
+
+// --- Leaderboards ---------------------------------------------------------------------------------
+export function openLeaderboard(board = LEADERBOARDS[0].id) {
+  try {
+    return !!sdk()?.leaderboard?.open?.(board)
+  } catch {
+    return false
+  }
+}
+export const canOpenLeaderboard = () => typeof sdk()?.leaderboard?.open === 'function'
+
+// --- Chat bubbles -----------------------------------------------------------------------------------
+// Bubble text for a chat message (short, 'sent a GIF' for GIFs) and the SDK's own bubble over `root`.
+export function chatBubbleText(m) {
+  try {
+    return sdk()?.chat?.bubbleText?.(m) ?? (m?.isGif ? 'sent a GIF' : String(m?.text ?? '').slice(0, 80))
+  } catch {
+    return ''
+  }
+}
+export function attachChatBubble(THREE, root, text, height) {
+  try {
+    sdk()?.chat?.attachBubble?.(THREE, root, text, { height })
+  } catch {
+    // Ignore.
+  }
+}
+
+// --- Emotes ---------------------------------------------------------------------------------------
+// [{ id, name, price, free, icon, clip: { len, loop, tracks } }] from the avatar API, cached; [] without it.
+let emotesPromise = null
+export function loadEmotes() {
+  emotesPromise ||= (async () => {
+    try {
+      const api = sdk()?.environment?.()?.apiUrl || 'https://api.bloxity.io'
+      const res = await fetch(`${api}/v1/avatar/emotes`)
+      const list = res.ok ? await res.json() : []
+      return Array.isArray(list) ? list : []
+    } catch {
+      return []
+    }
+  })()
+  return emotesPromise
+}
+
+// --- Invites / social -----------------------------------------------------------------------------
+// A link that opens this game in the room the player is in (null without the SDK).
+export function inviteLink(roomId) {
+  try {
+    return sdk()?.social?.getInviteFriendsLink?.({ gameSlug: GAME_SLUG, roomId: roomId || undefined }) || null
+  } catch {
+    return null
+  }
+}
+// The game seats a player in the room: friends can find them and the portal lists the others.
+export function playerJoined(username) {
+  try {
+    sdk()?.game?.playerJoined?.(username)
+  } catch {
+    // Ignore.
+  }
+}
+export function playerInRoom(username) {
+  try {
+    sdk()?.game?.playerInRoom?.(username)
+  } catch {
+    // Ignore.
+  }
+}
+// Own-server party launch (null = solo). With the Bloxity matchmaker this is automatic.
+export async function partyLaunch() {
+  try {
+    return (await sdk()?.party?.getLaunch?.()) ?? null
+  } catch {
+    return null
+  }
+}
+export function partyJoined(roomId) {
+  try {
+    sdk()?.party?.joined?.(roomId)
+  } catch {
+    // Ignore.
+  }
+}
+export function partyFailed(reason) {
+  try {
+    sdk()?.party?.failed?.(reason)
+  } catch {
+    // Ignore.
+  }
+}
+// Switching environment at runtime (prod / stage): fn(env) so net.js can reconnect.
+export function onEnvironmentChanged(fn) {
+  try {
+    const off = sdk()?.onEnvironmentChanged?.(fn)
+    if (typeof off === 'function') return off
+  } catch {
+    // Ignore.
+  }
+  return () => {}
 }

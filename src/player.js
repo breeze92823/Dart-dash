@@ -51,7 +51,15 @@ export function createPlayerBody() {
   onTick(step)
 }
 
-export function resetPlayer(spawn = SPAWN, facing = SPAWN_FACING) {
+// Where R / the portal's Respawn puts you: your base (main.js sets it once the server gives you a slot).
+let spawnPoint = SPAWN
+let spawnFacing = SPAWN_FACING
+export function setSpawn(spawn, facing) {
+  spawnPoint = spawn
+  spawnFacing = facing
+}
+
+export function resetPlayer(spawn = spawnPoint, facing = spawnFacing) {
   player.position.x = prev.x = player.renderPosition.x = spawn.x
   player.position.y = prev.y = player.renderPosition.y = spawn.y
   player.position.z = prev.z = player.renderPosition.z = spawn.z

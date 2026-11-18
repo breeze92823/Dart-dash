@@ -118,6 +118,8 @@ export function hydrate(data) {
   state.v = 3
   for (const id of Object.keys(state.weapons)) if (!WEAPONS[id]) delete state.weapons[id]
   if (!state.weapons[state.weapon]) state.weapon = 'blowpipe'
+  // "sleepy" darts handed out by the Free Gift / Battle Pass after the v3 catalog: keep them as reinforced.
+  if (state.darts.sleepy > 0) state.darts.reinforced = (state.darts.reinforced ?? 0) + state.darts.sleepy
   for (const id of Object.keys(state.darts)) if (!DARTS[id] || !(state.darts[id] >= 0)) delete state.darts[id]
   if (!DARTS[state.dartType]) state.dartType = 'basic'
   if (!COSMETICS.trails[state.cosmetics.trail]) state.cosmetics.trail = 'none'
@@ -341,8 +343,15 @@ export function equipWeapon(id) {
   emit('weapon')
   return true
 }
+// The portal: go to an open area's gate in the lane (main.js moves the player on 'travel').
 export function travel(id) {
-  if (!worldUnlocked(id) || state.world === id) return false
+  if (!worldUnlocked(id)) return false
+  emit('travel', id)
+  return true
+}
+// The player walked into a lane area: it becomes their current world (Index tab, presence).
+export function enterArea(id) {
+  if (!WORLDS[id] || state.world === id) return false
   state.world = id
   emit('world')
   return true
@@ -583,7 +592,7 @@ export function addXp(n) {
 }
 // Reward for reaching level L (1-based): money that grows with the level, darts on some.
 export function bpReward(L) {
-  if (L % 5 === 0) return { type: 'darts', dart: L >= 15 ? 'golden' : L >= 10 ? 'heavy' : 'sleepy', n: L >= 15 ? 5 : 10 }
+  if (L % 5 === 0) return { type: 'darts', dart: L >= 15 ? 'powerful' : 'reinforced', n: L >= 15 ? 5 : 10 }
   return { type: 'money', n: Math.round(250 * Math.pow(1.6, L - 1)) }
 }
 

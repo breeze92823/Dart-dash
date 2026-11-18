@@ -834,3 +834,5 @@ body.noui .wl-layer {
 .iconbtn.gear:active svg {
   transform: rotate(60deg);
 }
+
+.iconbtn.invite { font-size: 24px; line-height: 1; }

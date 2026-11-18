@@ -9,12 +9,20 @@
   font-family: 'Fredoka', system-ui, sans-serif;
   font-weight: 600;
   color: #fff;
-  --u: clamp(0.6px, 0.1vmin + 0.38px, 1.15px);
+  /* The design unit fits the window to the screen in both directions: a wide window is 1180u x
+     at most 820u, so on desktop it tops out near 86% of the height and 92% of the width (and
+     never past 0.95px, so big monitors get a window, not a wall). Portrait phones: see below. */
+  --u: clamp(0.7px, min(0.078vw, 0.105dvh), 0.95px);
   padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   touch-action: pan-y;
 }
 .pn-wrap.hide {
   display: none;
+}
+.pn-wrap *,
+.pn-wrap *::before,
+.pn-wrap *::after {
+  box-sizing: border-box;
 }
 .pn {
   position: relative;
@@ -53,8 +61,9 @@
   flex: 1;
 }
 .pn-close {
-  width: calc(54 * var(--u));
-  height: calc(54 * var(--u));
+  flex: none;
+  width: max(44px, calc(54 * var(--u)));
+  height: max(44px, calc(54 * var(--u)));
   border-radius: calc(10 * var(--u));
   border: calc(4 * var(--u)) solid #161616;
   background: linear-gradient(#ff7a6a, #e8392a);
@@ -160,6 +169,7 @@
 .card .btn {
   margin-top: auto;
   width: 100%;
+  min-height: 44px;
   border: calc(3 * var(--u)) solid #161616;
   border-radius: calc(10 * var(--u));
   background: linear-gradient(#7dff5a, #2fbf3a);
@@ -271,4 +281,89 @@
 }
 .pn .ol2 {
   text-shadow: 0 calc(2 * var(--u)) 0 rgba(0, 0, 0, 0.6);
+}
+
+/* Portrait phones: the layouts go to one or two columns, so the unit follows the width. */
+@media (max-width: 760px) {
+  .pn-wrap {
+    --u: clamp(0.7px, 0.2vw, 0.9px);
+    align-items: flex-end;
+  }
+  .pn {
+    width: 100%;
+    max-height: calc(100% - 16px);
+    border-radius: calc(18 * var(--u)) calc(18 * var(--u)) 0 0;
+    border-bottom: none;
+  }
+  .pn.narrow {
+    width: 100%;
+  }
+  .pn-head {
+    font-size: calc(32 * var(--u));
+    padding: calc(8 * var(--u)) calc(10 * var(--u));
+  }
+  .pn-head svg {
+    width: calc(40 * var(--u));
+    height: calc(40 * var(--u));
+  }
+  .pn-head .t {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pn-close {
+    flex: none;
+    width: 44px;
+    height: 44px;
+  }
+  .pn-tabs {
+    padding: calc(8 * var(--u)) calc(10 * var(--u)) 0;
+    flex-wrap: nowrap;
+  }
+  .pn-tabs button {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    padding-left: calc(4 * var(--u));
+    padding-right: calc(4 * var(--u));
+  }
+  .pn-body {
+    padding: calc(10 * var(--u)) calc(10 * var(--u)) calc(14 * var(--u));
+  }
+  .pn-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pn-row {
+    gap: calc(8 * var(--u));
+  }
+  .pn-row .btn {
+    min-height: 44px;
+    max-width: 42%;
+    white-space: normal;
+    line-height: 1.05;
+  }
+}
+/* Short screens (phones in landscape): use the whole height. */
+@media (max-height: 520px) {
+  .pn,
+  .pn.wide {
+    max-height: calc(100% - 8px);
+  }
+  .pn-head {
+    padding-top: calc(4 * var(--u));
+    padding-bottom: calc(4 * var(--u));
+    font-size: calc(30 * var(--u));
+  }
+  .pn-head svg {
+    width: calc(38 * var(--u));
+    height: calc(38 * var(--u));
+  }
+  .pn-tabs {
+    padding-top: calc(6 * var(--u));
+  }
+  .pn-body {
+    padding-top: calc(8 * var(--u));
+    padding-bottom: calc(10 * var(--u));
+  }
 }

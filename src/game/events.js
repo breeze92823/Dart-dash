@@ -3,21 +3,28 @@
 // tracks it ("Free to catch" / "Put to sleep by X" / "Carried by X") and the
 // wooden sign counts down to the next one. It leaves if nobody takes it in time.
 import { Vector3 } from 'three'
-import { ANIMALS, EVENTS, LANE, MUTATIONS, RARITIES, SEASON, WORLDS, seasonAnimals, worldAnimals } from '../config.js'
-import { fmtTime, luckyHourLeft, state } from './state.js'
+import { ANIMALS, AREA_IDS, EVENTS, LANE, LANE_AREAS, MUTATIONS, RARITIES, SEASON, WORLDS, seasonAnimals, worldAnimals } from '../config.js'
+import { fmtTime, luckyHourLeft, worldUnlocked } from './state.js'
 import { displayName, rollIncome } from './animals.js'
 import * as hud from '../ui/hud.js'
 import { sfx } from '../audio/index.js'
 
 const ICON = { boar: '🐗', heron: '🪶', fox: '🦊', deer: '🦌', cow: '🐄', chicken: '🐔', rabbit: '🐰', pig: '🐷', goat: '🐐', sheep: '🐑', turkey: '🦃' }
 
-// An EVENTS.list entry -> { species, mutation, area }: the current world's (or the season's)
+// The area the next event happens in: one of the player's open areas, picked when the previous
+// event ends (so the sign can name what is coming).
+const pickArea = () => {
+  const open = AREA_IDS.filter(worldUnlocked)
+  return open[Math.floor(Math.random() * open.length)] ?? 'meadow'
+}
+
+// An EVENTS.list entry -> { species, mutation, area, world }: that area's (or the season's)
 // animal of that rarity.
-function resolve(e) {
+function resolve(e, world) {
   const rarity = e.season ?? e.pick
-  const ids = e.season ? seasonAnimals() : worldAnimals(state.world)
+  const ids = e.season ? seasonAnimals() : worldAnimals(world)
   const species = ids.find((id) => ANIMALS[id].rarity === rarity) ?? ids[ids.length - 1]
-  return { species, mutation: e.mutation, area: e.season ? SEASON.name : WORLDS[state.world].name }
+  return { species, mutation: e.mutation, world, area: e.season ? `${SEASON.name} · ${WORLDS[world].name}` : WORLDS[world].name }
 }
 
 export function createEvents({ animals, live }) {
@@ -25,13 +32,15 @@ export function createEvents({ animals, live }) {
   let index = 0
   let current = null // { animal, left, def, title }
   let signTimer = 0
+  let nextArea = pickArea()
 
   function start() {
-    const e = resolve(EVENTS.list[index++ % EVENTS.list.length])
-    const income = rollIncome(e.species, e.mutation)
-    const a = animals.spawn(e.species, e.mutation, { event: true, income })
-    // Far side of the lane so it is a trip.
-    if (ANIMALS[e.species].zone !== 'marsh') a.pos.set((Math.random() - 0.5) * 60, LANE.y, LANE.spawn.minZ + 10 + Math.random() * 30)
+    const e = resolve(EVENTS.list[index++ % EVENTS.list.length], worldUnlocked(nextArea) ? nextArea : pickArea())
+    const income = rollIncome(e.species, e.mutation, e.world)
+    const a = animals.spawn(e.species, e.mutation, { event: true, income, area: e.world })
+    // The far half of its area, so it is a trip.
+    const A = LANE_AREAS[e.world]
+    if (ANIMALS[e.species].zone !== 'marsh') a.pos.set((Math.random() - 0.5) * 60, LANE.y, A.spawn.minZ + 4 + Math.random() * (A.spawn.maxZ - A.spawn.minZ) * 0.4)
     const r = RARITIES[ANIMALS[e.species].rarity]
     const title = `${ANIMALS[e.species].name} ${e.mutation ? MUTATIONS[e.mutation].name + ' ' : ''}${r.name} · ${e.area}`.toUpperCase()
     current = { animal: a, left: EVENTS.lasts, title, color: r.color, icon: ICON[ANIMALS[e.species].model] ?? '⭐' }
@@ -43,6 +52,7 @@ export function createEvents({ animals, live }) {
     if (msg) hud.toast(msg)
     current = null
     nextIn = EVENTS.every
+    nextArea = pickArea()
     hud.setEvent(null)
   }
 
@@ -68,7 +78,7 @@ export function createEvents({ animals, live }) {
         if (a.state !== 'carried' && a.state !== 'asleep') current.left -= dt
         if (current.left <= 0 && a.state !== 'carried' && a.state !== 'asleep' && a.state !== 'leaving') {
           a.state = 'leaving'
-          a.target.set(a.pos.x, LANE.y, LANE.minZ + 2)
+          a.target.set(a.pos.x, LANE.y, a.area.minZ + 2)
           hud.announce(`THE ${current.title.split(' · ')[0]} RAN AWAY!`, current.color, 4)
           end()
           return
@@ -82,7 +92,7 @@ export function createEvents({ animals, live }) {
       if (signTimer <= 0) {
         signTimer = 0.5
         if (current) live.nextEvent.redraw(current.title.split(' · ')[0], fmtTime(current.left), 'Catch it in the lane!')
-        else live.nextEvent.redraw('Next Event', fmtTime(nextIn), `${ANIMALS[resolve(EVENTS.list[index % EVENTS.list.length]).species].name} incoming`)
+        else live.nextEvent.redraw('Next Event', fmtTime(nextIn), `${ANIMALS[resolve(EVENTS.list[index % EVENTS.list.length], nextArea).species].name} · ${WORLDS[nextArea].name}`)
         const lucky = luckyHourLeft()
         if (lucky > 0) live.events.redraw('LUCKY HOUR!', 'x2 Luck active', fmtTime(lucky))
         else {
