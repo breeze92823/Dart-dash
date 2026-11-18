@@ -789,8 +789,6 @@ export const LEADERBOARDS = [
   { id: 'steps', label: 'Treadmill steps', order: 'desc', mode: 'best', format: 'compact', reset: 'none', stat: 'steps' },
   { id: 'earned', label: 'Total earned', order: 'desc', mode: 'best', format: 'compact', reset: 'weekly', stat: 'earned' },
 ]
-export const BOT_NAMES = ['Pixelfox', 'Mossy_Kid', 'DartQueen', 'Tobi2013', 'NoodleArm', 'Sk8rBean']
-export const BOTS = { count: 3 }
 
 // --- Audio (audio/*) ---------------------------------------------------------------------------
 export const AUDIO = {

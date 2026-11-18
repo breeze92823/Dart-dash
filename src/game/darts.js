@@ -104,7 +104,7 @@ export class Darts {
   }
 
   // Particle tail behind the dart: puffs every TAIL_STEP m along the segment it just
-  // flew (bots' darts more sparsely), from the tail end of the model, not the nose.
+  // flew (other shooters' darts more sparsely), from the tail end of the model, not the nose.
   tail(d, from) {
     const step = d.owner.isPlayer ? TAIL_STEP : TAIL_STEP * 2.5
     d.trail += from.distanceTo(d.pos)

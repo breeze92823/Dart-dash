@@ -16,6 +16,7 @@ import { animalThumb } from '../ui/thumbs.js'
 import { addMoney, addSteps, addToPen, emit, fmt, incomePerSec, on, penCapacity, penUpgradePrice, save, speedBonus, state, stepsPerStep, unlockTreadmill, upgradePen } from './state.js'
 import * as hud from '../ui/hud.js'
 import { openPanel, isPanelOpen } from '../ui/panels.js'
+import { canOpenLeaderboard, openLeaderboard } from '../bloxity.js'
 import { sfx } from '../audio/index.js'
 
 const tmp = new Vector3()
@@ -250,14 +251,18 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
         inZone.add(z.id)
         if (!isPanelOpen()) enterZone(z)
       } else if (!here && inZone.has(z.id)) inZone.delete(z.id)
-      if (here && (z.kind === 'gift' || z.kind === 'upgradePen' || z.kind === 'treadmillSign')) best = z
+      if (here && (z.kind === 'gift' || z.kind === 'upgradePen' || z.kind === 'treadmillSign' || (z.kind === 'boards' && canOpenLeaderboard()))) best = z
     }
     if (!inZone.has(penZone().id)) fullWarned = false
     return best
   }
 
   function promptFor(z) {
-    if (z.kind === 'gift') {
+    if (z.kind === 'boards') {
+      showPrompt(tmp.set(z.x, 2.6, z.z), 'Leaderboards', 'All Bloxity players', () => {
+        if (!openLeaderboard('captures')) hud.toast('Open the trophy button in the Bloxity toolbar', { seconds: 3 })
+      })
+    } else if (z.kind === 'gift') {
       const ready = state.giftAt <= Date.now()
       showPrompt(tmp.set(z.x, 2.6, z.z - 1), ready ? 'Open Gift' : 'Gift', ready ? 'Free reward!' : 'Not ready yet', () => openPanel('gift'))
     } else if (z.kind === 'upgradePen') {

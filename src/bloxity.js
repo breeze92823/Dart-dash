@@ -491,6 +491,32 @@ export function openLeaderboard(board = LEADERBOARDS[0].id) {
   }
 }
 export const canOpenLeaderboard = () => typeof sdk()?.leaderboard?.open === 'function'
+// Submits a final score (mode 'best' boards: resending the same or a lower score is harmless).
+// Guests rank too (Bloxity carries their scores over when they sign in). Null without the SDK.
+export async function submitScore(board, score) {
+  try {
+    return (await sdk()?.leaderboard?.submit?.(board, score)) ?? null
+  } catch {
+    return null
+  }
+}
+// The board's top rows as [{ name, value, me }] ([] without the SDK / on failure).
+export async function topScores(board, limit = 10) {
+  try {
+    const res = await sdk()?.leaderboard?.getTop?.(board, { period: 'all', limit })
+    const rows = Array.isArray(res?.rows) ? res.rows : []
+    const meId = authState.user?._id
+    return rows
+      .map((r) => ({
+        name: String(r.displayName || r.username || r.name || r.user?.displayName || r.user?.username || 'Player').slice(0, 24),
+        value: Number(r.score ?? r.value) || 0,
+        me: !!meId && (r.userId === meId || r.userId === `legion_${meId}` || r.user?._id === meId),
+      }))
+      .filter((r) => r.value > 0)
+  } catch {
+    return []
+  }
+}
 
 // --- Chat bubbles -----------------------------------------------------------------------------------
 // Bubble text for a chat message (short, 'sent a GIF' for GIFs) and the SDK's own bubble over `root`.

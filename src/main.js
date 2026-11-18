@@ -28,13 +28,14 @@ import { Darts } from './game/darts.js'
 import { createAim } from './game/aim.js'
 import { createBase } from './game/base.js'
 import { createEvents } from './game/events.js'
-import { createBots } from './game/bots.js'
+import { createBoards } from './game/boards.js'
 import { createCosmetics } from './game/cosmetics.js'
 import { createRemotePlayers, packAvatar } from './game/remotePlayers.js'
 import { createRemoteBases } from './game/remoteBases.js'
 import { createDanger } from './game/danger.js'
 import { addMoney, addXp, emit, enterArea, fmt, fmtTime, on, save, skinOwned, state, checkGoals, worldUnlocked } from './game/state.js'
 import * as playtime from './game/playtime.js'
+import { globalTop, roomRows, tickLeaderboards } from './game/leaderboards.js'
 import { initNet, net, sendAvatar, sendBase, sendEmote, sendPose, setJoinPresence } from './net.js'
 import * as hud from './ui/hud.js'
 import { closePanel, isPanelOpen, onPanelChange, openPanel, tickShop } from './ui/panels.js'
@@ -170,7 +171,7 @@ installAudio()
 const animals = new AnimalManager(scene, lane.obstacles)
 const darts = new Darts(scene, animals)
 const events = createEvents({ animals, live: hub.live })
-const bots = createBots({ scene, animals, darts, events, live: hub.live })
+const boards = createBoards({ live: hub.live })
 const cosmetics = createCosmetics({ playerGroup })
 const base = createBase({
   scene,
@@ -240,7 +241,6 @@ darts.onMutate = (animal, m) => {
   sfx.levelUp()
 }
 darts.onHit = (animal, slept, owner) => {
-  bots.onHit(animal, slept, owner)
   if (owner.isPlayer && slept && state.captures < 3) {
     hud.toast(`${animal.def.name} is asleep! Go grab it — ${Math.round(animal.sleepLeft)}s`, { check: true })
   }
@@ -429,6 +429,8 @@ function sendPresence(dt, speed) {
       level: state.pen.level,
       tml: state.treadmill.unlocked ? state.treadmill.level : -1,
       steps: state.steps,
+      money: Math.floor(state.money),
+      captures: state.captures,
       trail: state.cosmetics.trail || '',
       aura: state.cosmetics.aura || '',
       weapon: state.weapon || '',
@@ -476,7 +478,6 @@ function frame(forcedDt) {
     carriedEvent = null
   }
   events.update(dt)
-  bots.update(dt, ctx)
   remotePlayers.update(dt)
   remoteBases.update(dt, ctx)
   sendPresence(dt, speed)
@@ -514,6 +515,7 @@ function frame(forcedDt) {
     tickShop()
     if (!document.hidden) state.playtime += 1
     playtime.tick()
+    tickLeaderboards()
     hud.setPlaytimeReady(playtime.anyReady())
     // Skins earned by playing (catches, Index, playtime) unlock themselves.
     for (const id of Object.keys(SKINS)) {
@@ -542,7 +544,7 @@ function frame(forcedDt) {
   boardTimer -= dt
   if (boardTimer <= 0) {
     boardTimer = 5
-    bots.redrawBoards(playerName(), net.boards)
+    boards.redrawBoards(playerName(), net.boards, roomRows(), globalTop)
   }
 
   const viewH = renderer.getDrawingBufferSize(tmp).y
@@ -591,7 +593,7 @@ if (import.meta.env.DEV) {
     const d = c.sub(e)
     setView(Math.atan2(-d.x, -d.z), -Math.atan2(d.y, Math.hypot(d.x, d.z)))
   }
-  window.__game = { remotePlayers, remoteBases, step, aimAt, darts, player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, state, animals, base, aim, events, bots, addMoney, LANE, net, playtime, openPanel, danger,
+  window.__game = { remotePlayers, remoteBases, step, aimAt, darts, player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, state, animals, base, aim, events, boards, addMoney, LANE, net, playtime, openPanel, danger,
     lane, barriers,
     // Jump to an area's gate, open or not (testing): __game.goArea('volcano')
     goArea: (id) => {
