@@ -8,6 +8,7 @@
 // Same rule as bloxity.js: nothing here may throw outward. A blocked
 // CDN or a failed slot is logged and skipped. Approach ported from
 // Ice-Skate's systems/avatarModel.js, which targets the same base rig.
+import * as THREE from 'three'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import {
@@ -20,6 +21,7 @@ import {
   TextureLoader,
 } from 'three'
 import { MATERIAL_PBR, PLAYER_DIMS, PROPORTIONS, RIG, RIG_HEIGHT, clamp } from '../config.js'
+import { canDressKit, kitDress } from '../bloxity.js'
 import { AVATAR_SLOTS, assetUrl, composedSkinUrl, describeItem, isEquipped, itemUrls, partUrl, skinUrl } from './cdn.js'
 
 const HAT_LIFT = 0.8
@@ -266,4 +268,40 @@ export function applyProportions(root, proportions) {
   // proportionally wider, just taller.
   const unitScale = PLAYER_DIMS.height / RIG_HEIGHT
   root.scale.set(unitScale, unitScale * p.height, unitScale)
+}
+
+// --- Platform character kit ---------------------------------------------------------------------------
+// Boxity's kit draws a player's whole look (body, skin, parts, every accessory, proportions) on this rig
+// from one outfit key. Resolves the CharacterHandle (kept on root.userData.outfit) or null when the kit
+// can't draw it (switched off, bad key, custom character, load failure): then the rig is untouched and
+// the manual path above runs. While a handle is on the rig, leave its parts, skin and proportions alone.
+export async function dressWithKit(root, key) {
+  if (!root || !canDressKit(key)) return null
+  const handle = await kitDress({ THREE, GLTFLoader, root, outfitKey: key })
+  if (handle) root.userData.outfit = handle
+  return handle
+}
+
+// Switches a kit-dressed rig to a new key without a flicker; false when the rig isn't kit-dressed or the
+// kit can't draw the new look (the caller rebuilds the rig the manual way).
+export async function updateKitLook(root, key) {
+  const handle = root?.userData?.outfit
+  if (!handle || !canDressKit(key)) return false
+  try {
+    return !!(await handle.update(key))
+  } catch {
+    return false
+  }
+}
+
+// Takes the kit's outfit off a rig that is being thrown away.
+export function disposeKit(root) {
+  const handle = root?.userData?.outfit
+  if (!handle) return
+  root.userData.outfit = null
+  try {
+    handle.dispose()
+  } catch {
+    // The rig is going away anyway.
+  }
 }

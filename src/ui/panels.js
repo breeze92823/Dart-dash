@@ -14,7 +14,7 @@ import { animalThumb, weaponThumb } from './thumbs.js'
 import {
   activateAnimal, activeSlots, addMoney, boostLeft, boostPrice, bpLevel, bpReward, buyBoost, buySkin, caughtWith, claimMutation, claimSeason, claimWorld,
   emit, equipBest, equipSkin, fmt, fmtClock, fmtTime, incomePerSec, indexUnlocked, isDiscovered, mutationFound, penUpgradePrice, save, seasonFound,
-  restockDarts, sellAllStorage, sellAnimal, sellPrice, skinOwned, skinProgress, state, storeAnimal, travel, upgradePen, worldFound, worldUnlocked,
+  restockDarts, sellAllStorage, sellAnimal, sellPrice, shopItem, skinOwned, skinProgress, state, storeAnimal, travel, upgradePen, worldFound, worldUnlocked,
 } from '../game/state.js'
 import * as playtime from '../game/playtime.js'
 import * as ads from '../game/ads.js'
@@ -163,7 +163,10 @@ function adCards() {
     .adList()
     .map((a) => {
       const wait = ads.adWait(a.id)
-      return `<div class="card"><div class="ic">${a.boost ? (a.boost.id === 'luck' ? ICONS.clover : ICONS.cash) : ICONS.dart}</div><div class="nm">${a.name}</div><div class="ds">${a.desc}</div><button class="btn ${wait ? 'off' : ''}" data-do="watchAd" data-id="${a.id}">${wait ? `${fmtTime(wait)}` : 'WATCH AD'}</button></div>`
+      const ic = a.kind ? (a.kind === 'aura' ? ICONS.clover : a.kind === 'trail' ? ICONS.cash : ICONS.dart) : a.boost ? (a.boost.id === 'luck' ? ICONS.clover : ICONS.cash) : ICONS.dart
+      const name = a.kind ? `${a.name}: ${shopItem(a.kind, a.item).name}` : a.name
+      const ds = a.kind ? `Unlocks it for free (worth ${fmt(shopItem(a.kind, a.item).price)} $)` : a.desc
+      return `<div class="card"><div class="ic">${ic}</div><div class="nm">${name}</div><div class="ds">${ds}</div><button class="btn ${wait ? 'off' : ''}" data-do="watchAd" data-id="${a.id}"${a.item ? ` data-item="${a.item}"` : ''}>${wait ? `${fmtTime(wait)}` : 'WATCH AD'}</button></div>`
     })
     .join('')
   return `<div class="pn-sub" style="padding:14px 0 6px;font-weight:700">FREE: WATCH AN AD</div><div class="pn-grid">${cards}</div>`
@@ -441,11 +444,13 @@ async function act(b) {
       sfx.purchase()
       break
     case 'watchAd': {
-      const r = await ads.watchAd(id)
+      const r = await ads.watchAd(id, b.dataset.item)
       if (r.ok) {
         sfx.purchase()
-        toast(`${AD_REWARDS[id].name} unlocked!`, { check: true })
-      } else if (r.reason === 'skipped') toast('Watch the whole ad to get the reward', { error: true })
+        toast(`${r.item ?? AD_REWARDS[id].name} unlocked!`, { check: true })
+      } else if (r.reason === 'owned') toast('You already own that item', { error: true })
+      else if (r.reason === 'wait') toast('Watch the next ad in a moment', { error: true })
+      else if (r.reason === 'skipped') toast('Watch the whole ad to get the reward', { error: true })
       else if (r.reason === 'verify') toast('The reward could not be verified, try again', { error: true })
       else if (r.reason !== 'busy') toast('No ad available right now, try again later', { error: true })
       break

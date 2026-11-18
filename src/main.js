@@ -12,7 +12,7 @@ import { createLighting } from './lighting.js'
 import { createPostFx } from './postfx.js'
 import { setNeonBloom } from './propkit.js'
 import { buildDefaultCharacter, loadBaseCharacter } from './avatar/character.js'
-import { applyProportions, attachEquippedAccessories } from './avatar/loader.js'
+import { applyProportions, attachEquippedAccessories, disposeKit, dressWithKit, updateKitLook } from './avatar/loader.js'
 import { disposeAnimator, makeAnimator } from './avatar/animator.js'
 import { EmotePlayer } from './avatar/emotes.js'
 import { buildWorld } from './world/world.js'
@@ -114,7 +114,10 @@ let generation = 0
 let avatarReady = false
 
 function setAvatar(next) {
-  if (avatar) playerGroup.remove(avatar)
+  if (avatar) {
+    playerGroup.remove(avatar)
+    disposeKit(avatar)
+  }
   const overlay = animator?.overlayOn ? animator.overlay : null
   disposeAnimator(animator)
   avatar = next
@@ -128,6 +131,13 @@ async function loadAvatar() {
   const mine = ++generation
   try {
     const group = await loadBaseCharacter()
+    if (mine !== generation) return
+    // Boxity's character kit draws the whole look from the outfit key when it is switched on.
+    if (await dressWithKit(group, bloxity.outfitKey())) {
+      if (mine !== generation) return disposeKit(group)
+      setAvatar(group)
+      return
+    }
     if (mine !== generation) return
     const equipped = bloxity.authState.user ? bloxity.getEquippedAvatar() : null
     await attachEquippedAccessories(group, equipped, { skinTextureUrl: bloxity.getSkinTextureUrl() })
@@ -146,8 +156,15 @@ bloxity.subscribeAuth((s) => {
     loadAvatar()
   }
 })
-bloxity.onAvatarChanged(loadAvatar)
-bloxity.onProportionsChanged(() => applyProportions(avatar, bloxity.getProportions()))
+// A kit-dressed rig just switches looks (the key carries the proportions too); otherwise rebuild it.
+async function refreshLook() {
+  if (!(await updateKitLook(avatar, bloxity.outfitKey()))) loadAvatar()
+}
+bloxity.onAvatarChanged(refreshLook)
+bloxity.onProportionsChanged(() => {
+  if (avatar?.userData.outfit) refreshLook()
+  else applyProportions(avatar, bloxity.getProportions())
+})
 bloxity.onRespawnRequest(respawn)
 // Bloxity emotes: the portal menu's pick plays on the avatar and is replayed on everyone's screen.
 const localEmote = new EmotePlayer(() => animator?.rig?.bindings ?? [])
@@ -218,7 +235,7 @@ function syncSlot() {
 }
 setJoinPresence(
   () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.facing, speed: 0 }),
-  () => (bloxity.authState.user ? packAvatar(bloxity.getEquippedAvatar(), bloxity.getProportions()) : ''),
+  () => (bloxity.authState.user ? packAvatar(bloxity.getEquippedAvatar(), bloxity.getProportions(), bloxity.outfitKey()) : ''),
 )
 let firstPerson = false
 const aim = createAim({
@@ -436,7 +453,7 @@ function sendPresence(dt, speed) {
       weapon: state.weapon || '',
       world: state.world || '',
     })
-    if (bloxity.authState.user) sendAvatar(packAvatar(bloxity.getEquippedAvatar(), bloxity.getProportions()))
+    if (bloxity.authState.user) sendAvatar(packAvatar(bloxity.getEquippedAvatar(), bloxity.getProportions(), bloxity.outfitKey()))
   }
 }
 

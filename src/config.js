@@ -777,11 +777,18 @@ export const SAVE_KEY = 'dart-dash.save.v1'
 export const SERVER_URL = import.meta.env.DEV ? import.meta.env.VITE_SERVER_URL_DEV || 'ws://localhost:2567' : ''
 export const NET = { saveEvery: 6, retry: 4, retryMax: 60, requestTimeout: 8, poseEvery: 0.1, baseEvery: 1.5, joinWindow: 60 }
 // Watch-an-ad rewards (Bloxity rewarded ads; never Gems). Ids are the ad placements (lowercase,
-// digits, hyphens) and match the backend's AD_PLACEMENTS. Each is a free boost, once per cooldown.
+// digits, hyphens) and match the backend's AD_COOLDOWN_SECONDS. Each is a free reward, once per
+// cooldown. `kind` rewards unlock a FREE shop item ('skin' | 'aura' | 'trail'): any unowned item of
+// the Skin / Aura / Trail Shop priced up to `maxPrice` $ can be taken for an ad (its shop card shows
+// a WATCH AD button; the Boosts tab offers the cheapest one). Pricier items stay money-only.
 export const AD_REWARDS = {
   'free-darts': { name: 'Free Darts', desc: '+25 Basic darts', darts: { basic: 25 }, cooldown: 120 },
+  'free-pack': { name: 'Free Dart Pack', desc: '+5 Hibernation darts', darts: { hibernation: 5 }, cooldown: 600 },
   'cash-boost': { name: 'x2 Cash', desc: 'x2 cash/s for 5 min', boost: { id: 'cash', seconds: 300 }, cooldown: 600 },
   'luck-boost': { name: 'x2 Luck', desc: 'x2 luck for 5 min', boost: { id: 'luck', seconds: 300 }, cooldown: 600 },
+  'free-skin': { name: 'Free Skin', kind: 'skin', maxPrice: 2e5, cooldown: 300 },
+  'free-aura': { name: 'Free Aura', kind: 'aura', maxPrice: 2e6, cooldown: 300 },
+  'free-trail': { name: 'Free Trail', kind: 'trail', maxPrice: 2e7, cooldown: 300 },
 }
 // Bloxity leaderboards (SDK define + server-side reporting); ids lowercase a-z, 0-9, _ or -.
 export const LEADERBOARDS = [

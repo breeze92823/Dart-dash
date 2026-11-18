@@ -119,6 +119,25 @@
   font-size: clamp(14px, 3.6vw, calc(26 * var(--u)));
   text-shadow: 0 2px 0 #161616;
 }
+/* Boxity's death screen: the GET UP button waits for its countdown (never a timer). */
+.dg-wake {
+  pointer-events: auto;
+  margin-top: calc(14 * var(--u));
+  min-width: 44px;
+  min-height: 44px;
+  padding: calc(6 * var(--u)) calc(34 * var(--u)) calc(2 * var(--u));
+  border: calc(3 * var(--u)) solid #161616;
+  border-radius: calc(12 * var(--u));
+  background: linear-gradient(#8dff5a, #3fc24a);
+  color: #fff;
+  font-family: 'Luckiest Guy', sans-serif;
+  font-size: clamp(20px, 5vw, calc(34 * var(--u)));
+  -webkit-text-stroke: calc(2 * var(--u)) #161616;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.dg-wake:disabled { filter: grayscale(0.7) brightness(0.8); cursor: default; }
+.dg-wake[hidden] { display: none; }
 @keyframes dg-pop {
   0% { opacity: 0; transform: translate(-50%, 20%) scale(0.5); }
   15% { opacity: 1; transform: translate(-50%, -20%) scale(1.25); }

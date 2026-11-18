@@ -131,6 +131,10 @@
 }
 .sk-btn.blue { background: linear-gradient(#7fd0ff, #2f9bff); }
 .sk-btn.grey { background: linear-gradient(#e6e8ec, #a9adb5); }
+.sk-btn.gold, .tr-b.gold { background: linear-gradient(#ffd75a, #f2a52a); }
+.sk-btn.off, .tr-b.off { filter: grayscale(0.6) brightness(0.85); }
+/* The free-for-an-ad button sits under the price button. */
+.sk-btn + .sk-btn, .tr-b + .tr-b { margin-top: calc(6 * var(--u)); font-size: calc(16 * var(--u)); }
 
 /* Darts ---------------------------------------------------------------------------------------------- */
 .pn-darts .pn-body {

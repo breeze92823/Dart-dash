@@ -4,6 +4,24 @@
 // Docs: https://docs.bloxity.io/#html5
 import { GAME_SLUG, GAME_TITLE, SETTINGS, DEV_MODE, LEADERBOARDS, coerceSetting } from './config.js'
 
+// The URLs of the environment Bloxity told this page about (prod / stage / local). Never guess it from
+// the hostname: read what the SDK (or the page's window.BLOXITY_ENV) was told, prod when nothing was.
+const PROD_ENV = {
+  env: 'prod',
+  apiUrl: 'https://api.bloxity.io',
+  playUrl: 'https://play.bloxity.io',
+  portalUrl: 'https://bloxity.io',
+  staticUrl: 'https://static.bloxity.io',
+}
+export function boxityEnv() {
+  try {
+    const told = window.Legion?.SDK?.environment?.() || window.BLOXITY_ENV
+    return told && told.apiUrl ? { ...PROD_ENV, ...told } : PROD_ENV
+  } catch {
+    return PROD_ENV
+  }
+}
+
 export function sdk() {
   if (DEV_MODE) return null
   return (typeof window !== 'undefined' && window.Legion && window.Legion.SDK) || null
@@ -131,13 +149,7 @@ export function getPfp() {
   const raw = authState.user?.pfp || authState.guest?.pfp
   if (typeof raw !== 'string' || !raw) return ''
   try {
-    let base = 'https://static.bloxity.io'
-    try {
-      base = sdk()?.environment?.()?.staticUrl || base
-    } catch {
-      // Older SDK builds have no environment().
-    }
-    const url = new URL(raw, base)
+    const url = new URL(raw, boxityEnv().staticUrl)
     return /^https?:$/.test(url.protocol) ? url.href : ''
   } catch {
     return ''
@@ -278,6 +290,37 @@ export function getSkinTextureUrl() {
     const url = sdk()?.avatar?.getSkinTextureUrl?.()
     return typeof url === 'string' && url ? url : null
   } catch {
+    return null
+  }
+}
+
+// --- Platform character kit (three.js) --------------------------------------------------------------
+// Boxity dresses the game's own player.glb rig in a player's whole look from one outfit key (avatar/loader.js
+// dressWithKit). Only when Boxity has switched the kit on for the game; otherwise the manual avatar path runs.
+// The local player's key (equipped ids + proportions), '' without the SDK.
+export function outfitKey() {
+  try {
+    const k = sdk()?.avatar?.getOutfitKey?.()
+    return typeof k === 'string' ? k : ''
+  } catch {
+    return ''
+  }
+}
+// A key other players' outfits come in as: URL-safe characters only, bounded.
+export const validOutfitKey = (k) => typeof k === 'string' && /^[A-Za-z0-9_.~-]{1,600}$/.test(k)
+export function canDressKit(key) {
+  try {
+    return validOutfitKey(key) && !!sdk()?.character?.canDress?.(key)
+  } catch {
+    return false
+  }
+}
+// Resolves the kit's CharacterHandle, or null (kit off, bad key, file failed). Never throws.
+export async function kitDress(options) {
+  try {
+    return (await sdk()?.character?.dress?.(options)) || null
+  } catch (err) {
+    console.warn('[bloxity] character kit failed', err)
     return null
   }
 }
@@ -482,6 +525,26 @@ export function hideAdScreen() {
   }
 }
 
+// --- Death screen -----------------------------------------------------------------------------------
+// Boxity shows ads around the game while the player is down and holds the Respawn button for a
+// countdown (>= 4 s). deathShow() -> { onCountdown(fn) -> off, respawn() -> bool } or null without
+// the SDK (then the caller wakes the player on its own timer). Respawn only when respawn() is true.
+export function deathShow() {
+  try {
+    const d = sdk()?.deathScreen?.show?.()
+    return d && typeof d.respawn === 'function' ? d : null
+  } catch {
+    return null
+  }
+}
+export function deathHide() {
+  try {
+    sdk()?.deathScreen?.hide?.()
+  } catch {
+    // Ignore.
+  }
+}
+
 // --- Leaderboards ---------------------------------------------------------------------------------
 export function openLeaderboard(board = LEADERBOARDS[0].id) {
   try {
@@ -541,7 +604,7 @@ let emotesPromise = null
 export function loadEmotes() {
   emotesPromise ||= (async () => {
     try {
-      const api = sdk()?.environment?.()?.apiUrl || 'https://api.bloxity.io'
+      const api = boxityEnv().apiUrl
       const res = await fetch(`${api}/v1/avatar/emotes`)
       const list = res.ok ? await res.json() : []
       return Array.isArray(list) ? list : []
