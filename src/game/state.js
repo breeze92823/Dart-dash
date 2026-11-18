@@ -553,6 +553,36 @@ export function buySkin(id) {
   emit('cosmetic')
   return true
 }
+// --- Free shop items (rewarded ads, game/ads.js) -------------------------------------------------------
+// The $-priced shop item `id` of `kind` ('skin' | 'aura' | 'trail'): { name, price, owned }, or null when it
+// isn't sold for $ (earned skins / auras, 'none', unknown ids).
+export function shopItem(kind, id) {
+  if (kind === 'skin') {
+    const s = SKINS[id]
+    return s?.unlock.type === 'shop' ? { name: s.name, price: s.unlock.price, owned: !!state.cosmetics.skins[id] } : null
+  }
+  if (kind === 'aura') {
+    const a = COSMETICS.auras[id]
+    return a?.get === 'shop' && a.price > 0 ? { name: a.name, price: a.price, owned: !!state.cosmetics.auras[id] } : null
+  }
+  if (kind === 'trail') {
+    const t = COSMETICS.trails[id]
+    return t && t.price > 0 ? { name: t.name, price: t.price, owned: !!state.cosmetics.trails[id] } : null
+  }
+  return null
+}
+// Gives a shop item for free and equips it (what buying does, minus the price). Returns its name or ''.
+export function unlockShopItem(kind, id) {
+  const it = shopItem(kind, id)
+  if (!it || it.owned) return ''
+  if (kind === 'skin') state.cosmetics.skins[id] = true
+  if (kind === 'aura') state.cosmetics.auras[id] = true
+  if (kind === 'trail') state.cosmetics.trails[id] = true
+  state.cosmetics[kind] = id
+  emit('cosmetic')
+  if (kind === 'trail') emit('steps', state.steps)
+  return it.name
+}
 export function equipSkin(id) {
   if (!skinOwned(id)) return false
   state.cosmetics.skin = id

@@ -15,12 +15,19 @@ import {
 } from '../game/state.js'
 import { sfx } from '../audio/index.js'
 import { toast } from './hud.js'
+import * as ads from '../game/ads.js'
 
 export const SHOP_PANELS = ['darts', 'armory', 'skinShop', 'auraShop', 'trailShop']
 const can = (n) => state.money >= n
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 const money = (n) => `${fmt(n)} $`
 const pill = (text, color = '') => `<div class="sh-pill ol"${color ? ` style="--pc:${color}"` : ''}>${text}</div>`
+// A "watch an ad, get it free" button for an unowned item cheap enough for a rewarded ad (ads.js).
+function adBtn(placement, item, cls = 'btn') {
+  if (!ads.adsOffered() || !ads.freeItemOk(placement, item)) return ''
+  const wait = ads.adWait(placement)
+  return `<button class="${cls} gold ${wait ? 'off' : ''} ol" data-do="watchAd" data-id="${placement}" data-item="${item}">${wait ? `AD IN ${wait}s` : 'WATCH AD · FREE'}</button>`
+}
 const rarityTag = (r) => COSMETIC_RARITY[r] ?? COSMETIC_RARITY.common
 
 // --- Icons ---------------------------------------------------------------------------------------------
@@ -140,7 +147,7 @@ export const SHOP_SKINS = Object.keys(SKINS).filter((id) => SKINS[id].unlock.typ
 function skinAction(id) {
   const s = SKINS[id]
   if (skinOwned(id)) return state.cosmetics.skin === id ? '<div class="sk-eq ol">EQUIPPED</div>' : btn('EQUIP', `data-do="equipSkin" data-id="${id}"`, 'blue')
-  return btn(money(s.unlock.price), `data-do="buySkin" data-id="${id}"`, can(s.unlock.price) ? 'green' : 'grey')
+  return btn(money(s.unlock.price), `data-do="buySkin" data-id="${id}"`, can(s.unlock.price) ? 'green' : 'grey') + adBtn('free-skin', id, 'sk-btn')
 }
 function skinShopBody(view) {
   const n = SHOP_SKINS.length
@@ -169,7 +176,7 @@ function auraHow(id) {
 function auraAction(id) {
   const a = COSMETICS.auras[id]
   if (auraOwned(id)) return state.cosmetics.aura === id ? btn('UNEQUIP', 'data-do="equipAura" data-id="none"', 'grey') : btn('EQUIP', `data-do="equipAura" data-id="${id}"`, 'blue')
-  if (a.get === 'shop') return btn(money(a.price), `data-do="buyAura" data-id="${id}"`, can(a.price) ? 'green' : 'grey')
+  if (a.get === 'shop') return btn(money(a.price), `data-do="buyAura" data-id="${id}"`, can(a.price) ? 'green' : 'grey') + adBtn('free-aura', id, 'sk-btn')
   return ''
 }
 function auraPill(id) {
@@ -205,7 +212,7 @@ function trailShopBody() {
     const eq = state.cosmetics.trail === id
     const action = owned
       ? eq ? `<button class="tr-b grey ol" data-do="equipTrail" data-id="none">UNEQUIP</button>` : `<button class="tr-b blue ol" data-do="equipTrail" data-id="${id}">EQUIP</button>`
-      : `<button class="tr-b ${can(t.price) ? 'green' : 'grey'} ol" data-do="buyTrail" data-id="${id}">${money(t.price)}</button>`
+      : `<button class="tr-b ${can(t.price) ? 'green' : 'grey'} ol" data-do="buyTrail" data-id="${id}">${money(t.price)}</button>${adBtn('free-trail', id, 'tr-b')}`
     return `<div class="tr-card r-${t.rarity}${eq ? ' eq' : ''}" style="--rc:${r.card}"><div class="tr-n ol">${t.name.toUpperCase()}</div><div class="tr-r ol" style="color:${r.color}">${r.name.toUpperCase()}</div><div class="tr-ic">${trailIcon(id)}</div><div class="tr-sp ol">X${t.speed} SPEED</div>${action}</div>`
   }).join('')}</div><div class="pn-sub" style="padding:10px 0 0;text-align:center">A trail multiplies the speed the treadmill gives you (one trail at a time).</div>`
 }

@@ -11,6 +11,7 @@ import { DANGER, LANE } from '../config.js'
 import { player, respawn } from '../player.js'
 import { dust, emit, hitBurst, puff, sparkle } from '../fx/particles.js'
 import * as snd from '../audio/danger.js'
+import { deathHide, deathShow } from '../bloxity.js'
 import './danger.css'
 
 const rnd = (a, b) => a + Math.random() * (b - a)
@@ -20,12 +21,13 @@ export function createDanger({ animals, base, hud, playerGroup }) {
   // --- HUD ------------------------------------------------------------------------------------
   const root = document.createElement('div')
   root.className = 'dg'
-  root.innerHTML = `<div class="dg-vig"></div><div class="dg-ko"><b>KNOCKED OUT!</b><span>The animals got you</span></div>
+  root.innerHTML = `<div class="dg-vig"></div><div class="dg-ko"><b>KNOCKED OUT!</b><span>The animals got you</span><button class="dg-wake" type="button" hidden>GET UP</button></div>
     <div class="dg-hp"><i class="dg-heart">❤</i><div class="dg-bar"><i class="dg-lag"></i><i class="dg-fill"></i><b class="dg-num">100</b></div></div><div class="dg-pops"></div>`
   document.body.appendChild(root)
   const el = {
     vig: root.querySelector('.dg-vig'),
     ko: root.querySelector('.dg-ko'),
+    wake: root.querySelector('.dg-wake'),
     hpBox: root.querySelector('.dg-hp'),
     fill: root.querySelector('.dg-fill'),
     lag: root.querySelector('.dg-lag'),
@@ -46,6 +48,9 @@ export function createDanger({ animals, base, hud, playerGroup }) {
   let lagHp = hp
   let sinceHit = 99
   let ko = 0 // s left knocked out
+  let death = null // Boxity's death screen while knocked out (it holds the GET UP button for its countdown)
+  let offCount = null
+  let gotUp = false
   let safe = 0 // s untouchable after waking up
   let flash = 0 // red screen flash 0..1
   let beat = 0
@@ -140,8 +145,36 @@ export function createDanger({ animals, base, hud, playerGroup }) {
     for (const a of animals.list) if (a.anger) calm(a)
     snd.knockout()
     el.ko.classList.add('on')
+    // With Boxity the player gets up with the GET UP button once its countdown ends (never on a timer).
+    gotUp = false
+    death = deathShow()
+    if (death) {
+      document.exitPointerLock?.() // the cursor is needed for GET UP
+      el.wake.hidden = false
+      el.wake.disabled = true
+      el.wake.textContent = 'GET UP'
+      offCount = death.onCountdown?.((n) => {
+        el.wake.disabled = n > 0
+        el.wake.textContent = n > 0 ? `GET UP (${n})` : 'GET UP'
+      })
+    }
+  }
+  el.wake.addEventListener('click', () => {
+    if (death?.respawn()) {
+      gotUp = true
+      ko = 0.001 // the next frame counts it out and wakes the player
+    }
+  })
+  function endDeath() {
+    if (death && !gotUp) deathHide()
+    if (typeof offCount === 'function') offCount()
+    offCount = null
+    death = null
+    gotUp = false
+    el.wake.hidden = true
   }
   function wakeUp() {
+    endDeath()
     player.locked = false
     tilt = 0
     playerGroup.rotation.x = 0
@@ -269,6 +302,12 @@ export function createDanger({ animals, base, hud, playerGroup }) {
     get knockedOut() {
       return ko > 0
     },
+    // Dev hook (__game.danger.forceKnockOut()): knocks the player out as if the HP ran out.
+    forceKnockOut() {
+      if (ko > 0) return
+      hp = 0
+      knockOut()
+    },
     shakeOffset: shake.offset,
     update(dt) {
       sinceHit += dt
@@ -278,7 +317,10 @@ export function createDanger({ animals, base, hud, playerGroup }) {
         ko -= dt
         tilt += (1 - tilt) * Math.min(1, dt * 7)
         if (Math.random() < dt * 8) sparkle(new Vector3(player.position.x + rnd(-0.6, 0.6), player.position.y + 0.6, player.position.z + rnd(-0.6, 0.6)), '#ffe36a', 1, 1.2, 0.45)
-        if (ko <= 0) wakeUp()
+        if (ko <= 0) {
+          if (death && !gotUp) ko = 0.5 // stay down until GET UP
+          else wakeUp()
+        }
       } else tilt = 0
       playerGroup.rotation.x = -tilt * 1.45
 

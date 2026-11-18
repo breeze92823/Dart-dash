@@ -7,13 +7,13 @@ import { Group, Vector3 } from 'three'
 import { ANIMALS, POSES, WEAPONS } from '../config.js'
 import { addLabel } from '../fx/labels.js'
 import { buildDefaultCharacter, loadBaseCharacter } from '../avatar/character.js'
-import { applyProportions, attachEquippedAccessories } from '../avatar/loader.js'
+import { applyProportions, attachEquippedAccessories, disposeKit, dressWithKit, updateKitLook } from '../avatar/loader.js'
 import { composedSkinUrl } from '../avatar/cdn.js'
 import { disposeAnimator, makeAnimator } from '../avatar/animator.js'
 import { EmotePlayer } from '../avatar/emotes.js'
 import { buildAnimal } from './animalModels.js'
 import { buildWeapon } from './weapons.js'
-import { attachChatBubble, chatBubbleText, loadEmotes } from '../bloxity.js'
+import { attachChatBubble, chatBubbleText, loadEmotes, validOutfitKey } from '../bloxity.js'
 import { net } from '../net.js'
 
 const OUTFITS = [
@@ -29,14 +29,15 @@ const EQUIP_KEYS = ['headId', 'torsoId', 'armLId', 'armRId', 'legLId', 'legRId',
 const PROP_KEYS = ['height', 'shoulderWidth', 'armLength', 'legOffsetX', 'torsoScaleX', 'neckHeight', 'headScale']
 
 // The look sent to the others: equipped item IDS and proportions only, never URLs (the receiver
-// builds those itself from the ids).
-export function packAvatar(equipped, proportions) {
+// builds those itself from the ids), plus Boxity's outfit key `k` (one string naming the whole look,
+// which the character kit dresses the rig from).
+export function packAvatar(equipped, proportions, key = '') {
   if (!equipped || typeof equipped !== 'object') return ''
   const e = {}
   for (const k of EQUIP_KEYS) if (equipped[k] != null && ['string', 'number'].includes(typeof equipped[k])) e[k] = equipped[k]
   const pr = {}
   for (const k of PROP_KEYS) if (Number.isFinite(proportions?.[k])) pr[k] = Math.round(proportions[k] * 1000) / 1000
-  return JSON.stringify({ e, p: pr })
+  return JSON.stringify(validOutfitKey(key) ? { e, p: pr, k: key } : { e, p: pr })
 }
 function unpackAvatar(json) {
   try {
@@ -46,7 +47,7 @@ function unpackAvatar(json) {
     for (const k of EQUIP_KEYS) if (['string', 'number'].includes(typeof o.e[k])) e[k] = String(o.e[k]).slice(0, 40)
     const p = {}
     for (const k of PROP_KEYS) if (Number.isFinite(o.p?.[k])) p[k] = o.p[k]
-    return { equipped: e, proportions: p }
+    return { equipped: e, proportions: p, key: validOutfitKey(o.k) ? o.k : '' }
   } catch {
     return null
   }
@@ -91,7 +92,10 @@ export function createRemotePlayers({ scene }) {
   }
 
   function setBody(r, body) {
-    if (r.body) r.group.remove(r.body)
+    if (r.body) {
+      r.group.remove(r.body)
+      disposeKit(r.body)
+    }
     disposeAnimator(r.animator)
     r.body = body
     r.group.add(body)
@@ -106,7 +110,16 @@ export function createRemotePlayers({ scene }) {
     if (!look) return
     const mine = ++r.gen
     try {
+      // Already kit-dressed: switch to the new key in place.
+      if (look.key && (await updateKitLook(r.body, look.key))) return
+      if (mine !== r.gen || !remotes.has(r.sid)) return
       const body = await loadBaseCharacter()
+      if (mine !== r.gen || !remotes.has(r.sid)) return
+      if (look.key && (await dressWithKit(body, look.key))) {
+        if (mine !== r.gen || !remotes.has(r.sid)) return disposeKit(body)
+        setBody(r, body)
+        return
+      }
       if (mine !== r.gen || !remotes.has(r.sid)) return
       await attachEquippedAccessories(body, look.equipped, { skinTextureUrl: composedSkinUrl(look.equipped) })
       if (mine !== r.gen || !remotes.has(r.sid)) return
@@ -153,6 +166,7 @@ export function createRemotePlayers({ scene }) {
   function remove(r) {
     r.tag?.remove()
     disposeAnimator(r.animator)
+    disposeKit(r.body)
     r.group.removeFromParent()
     r.gen++
     remotes.delete(r.sid)
