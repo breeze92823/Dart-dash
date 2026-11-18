@@ -351,7 +351,8 @@ export const AREAS = {
 }
 
 // A pond in the area's look (water, ice or lava), with its rim and lily pads.
-export function areaPond(p, look, x, y, z, r, lava) {
+export function areaPond(p, area, x, y, z, r, lava) {
+  const look = area.pond
   const g = grp(p, x, y, z, 0)
   disc(g, r + 1.6, look.rim, 0, 0.04, 0)
   const surface = look.lava ? lava : new MeshStandardMaterial({ color: look.water, roughness: look.ice ? 0.08 : 0.12, metalness: 0.1, transparent: look.opacity < 1, opacity: look.opacity })

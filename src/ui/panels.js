@@ -6,7 +6,7 @@
 import './panels.css'
 import './windows.css'
 import {
-  ANIMALS, BATTLE_PASS, BOOSTS, DARTS, GAME_SETTINGS, GIFT, INDEX_ANIMALS, MUTATIONS, MUTATION_MILESTONES, PEN, PLAYTIME,
+  AD_REWARDS, ANIMALS, BATTLE_PASS, BOOSTS, DARTS, GAME_SETTINGS, GIFT, INDEX_ANIMALS, MUTATIONS, MUTATION_MILESTONES, PEN, PLAYTIME,
   RARITIES, SEASON, SKINS, WEAPONS, WORLDS, seasonAnimals, worldAnimals,
 } from '../config.js'
 import { ICONS } from './icons.js'
@@ -17,6 +17,7 @@ import {
   restockDarts, sellAllStorage, sellAnimal, sellPrice, skinOwned, skinProgress, state, storeAnimal, travel, upgradePen, worldFound, worldUnlocked,
 } from '../game/state.js'
 import * as playtime from '../game/playtime.js'
+import * as ads from '../game/ads.js'
 import { sfx } from '../audio/index.js'
 import { toast } from './hud.js'
 import * as shops from './shops.js'
@@ -153,7 +154,19 @@ function shopBoosts() {
       const left = boostLeft(id)
       return `<div class="card"><div class="ic">${id === 'luck' ? ICONS.clover : ICONS.cash}</div><div class="nm">${b.name}</div><div class="ds">${b.seconds / 60} minutes${left > 0 ? `<br>Active: ${fmtTime(left)}` : ''}</div><button class="btn ${can(boostPrice(id)) ? '' : 'off'}" data-do="buyBoost" data-id="${id}">${price(boostPrice(id))}</button></div>`
     })
-    .join('')}</div><div class="pn-sub" style="padding:12px 0 0">Luck makes rare animals and mutations (Shiny, Golden, Diamond, Rainbow, Void) more likely. Stacks with Lucky Hour.</div>`
+    .join('')}</div>${adCards()}<div class="pn-sub" style="padding:12px 0 0">Luck makes rare animals and mutations (Shiny, Golden, Diamond, Rainbow, Void) more likely. Stacks with Lucky Hour.</div>`
+}
+// "Watch an ad" rewards (Bloxity rewarded ads): shown only where ads are available.
+function adCards() {
+  if (!ads.adsOffered()) return ''
+  const cards = ads
+    .adList()
+    .map((a) => {
+      const wait = ads.adWait(a.id)
+      return `<div class="card"><div class="ic">${a.boost ? (a.boost.id === 'luck' ? ICONS.clover : ICONS.cash) : ICONS.dart}</div><div class="nm">${a.name}</div><div class="ds">${a.desc}</div><button class="btn ${wait ? 'off' : ''}" data-do="watchAd" data-id="${a.id}">${wait ? `${fmtTime(wait)}` : 'WATCH AD'}</button></div>`
+    })
+    .join('')
+  return `<div class="pn-sub" style="padding:14px 0 6px;font-weight:700">FREE: WATCH AN AD</div><div class="pn-grid">${cards}</div>`
 }
 
 // --- Animal Index -----------------------------------------------------------------------------------
@@ -342,7 +355,7 @@ export function giftValue() {
 }
 function giftBody() {
   const left = (state.giftAt - Date.now()) / 1000
-  return `<div class="pn-big">${ICONS.gift}<div class="huge ol2">$${fmt(giftValue())}</div><div class="ds">+ ${GIFT.darts} Sleepy darts</div>${left <= 0 ? `<button class="btn" data-do="claimGift">CLAIM!</button>` : `<button class="btn off">${fmtTime(left)}</button>`}<div class="ds" style="margin-top:10px">A free gift every ${GIFT.every / 60} minutes.</div></div>`
+  return `<div class="pn-big">${ICONS.gift}<div class="huge ol2">$${fmt(giftValue())}</div><div class="ds">+ ${GIFT.darts} ${DARTS[GIFT.dart].name} darts</div>${left <= 0 ? `<button class="btn" data-do="claimGift">CLAIM!</button>` : `<button class="btn off">${fmtTime(left)}</button>`}<div class="ds" style="margin-top:10px">A free gift every ${GIFT.every / 60} minutes.</div></div>`
 }
 
 // --- Playtime Rewards --------------------------------------------------------------------------------
@@ -393,11 +406,10 @@ function worldsBody() {
   return WORLD_IDS.map((id) => {
     const w = WORLDS[id]
     const a = WORLD_ART[id]
-    const here = state.world === id
     const open = worldUnlocked(id)
-    const btn = here ? `<button class="btn off">HERE</button>` : open ? `<button class="btn" data-do="travel" data-id="${id}">TRAVEL</button>` : `<button class="btn alt" data-do="toArmory" data-id="${w.weapon}">NEEDS ${WEAPONS[w.weapon].name.toUpperCase()}</button>`
+    const btn = open ? `<button class="btn" data-do="travel" data-id="${id}">TRAVEL</button>` : `<button class="btn alt" data-do="toArmory" data-id="${w.weapon}">NEEDS ${WEAPONS[w.weapon].name.toUpperCase()}</button>`
     return `<div class="pn-row wr ${open ? '' : 'locked'}"><div class="wr-pic" style="--sky:${a.sky};--gr:${a.ground}">${a.emoji}</div><div class="grow"><div class="nm">${w.name}</div><div class="ds">Animals worth x${fmt(w.mult)} · Index ${worldFound(id)}/6</div></div>${btn}</div>`
-  }).join('') + `<div class="pn-sub" style="padding:6px 0 0">Each world fills the lane with its own six animals and opens with a weapon from the ARMORY. Halloween animals roam every world during the event.</div>`
+  }).join('') + `<div class="pn-sub" style="padding:6px 0 0">Every area lies along the lane, Meadow first and Volcano at the cliff, each with its own six animals. Its barrier opens with a weapon from the ARMORY, which also reaches that far. TRAVEL takes you to an area's gate. Halloween animals roam every area during the event.</div>`
 }
 
 // --- Actions ----------------------------------------------------------------------------------------
@@ -428,6 +440,16 @@ async function act(b) {
       if (!buyBoost(id)) return deny(b, 'Not enough money')
       sfx.purchase()
       break
+    case 'watchAd': {
+      const r = await ads.watchAd(id)
+      if (r.ok) {
+        sfx.purchase()
+        toast(`${AD_REWARDS[id].name} unlocked!`, { check: true })
+      } else if (r.reason === 'skipped') toast('Watch the whole ad to get the reward', { error: true })
+      else if (r.reason === 'verify') toast('The reward could not be verified, try again', { error: true })
+      else if (r.reason !== 'busy') toast('No ad available right now, try again later', { error: true })
+      break
+    }
     // Index
     case 'ixSel':
       current.sel = id
@@ -529,11 +551,11 @@ async function act(b) {
       if (state.giftAt > Date.now()) return
       const v = giftValue()
       state.giftAt = Date.now() + GIFT.every * 1000
-      state.darts.sleepy = (state.darts.sleepy ?? 0) + GIFT.darts
+      state.darts[GIFT.dart] = (state.darts[GIFT.dart] ?? 0) + GIFT.darts
       addMoney(v)
       emit('darts')
       sfx.gift()
-      toast(`+$${fmt(v)} and ${GIFT.darts} Sleepy darts!`)
+      toast(`+$${fmt(v)} and ${GIFT.darts} ${DARTS[GIFT.dart].name} darts!`)
       break
     }
     case 'claimPt': {

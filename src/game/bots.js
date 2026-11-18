@@ -1,9 +1,10 @@
-// NPC hunters so the hub feels alive. Each bot walks to the band, darts an
+// NPC hunters so the hub feels alive. They hang around the town (the hub's south part) and walk
+// up to the band through the aisles between the players' bases (config PLOT), never through a pen. Each bot walks to the band, darts an
 // animal, runs down to fetch it and carries it back to the portal (its own
 // zoo). Their sleeping catches can be stolen. They also fill the leaderboards
 // alongside the player.
 import { Group, Vector3 } from 'three'
-import { BAND, BOT_NAMES, BOTS, LANE, POSES, STUD, WEAPONS } from '../config.js'
+import { BAND, BASES, BOT_NAMES, BOTS, HUB, LANE, PLOT, POSES, STUD, WEAPONS } from '../config.js'
 import { groundY } from '../physics.js'
 import { addLabel } from '../fx/labels.js'
 import { buildDefaultCharacter } from '../avatar/character.js'
@@ -19,7 +20,21 @@ const OUTFITS = [
   { suit: '#a35be8', legs: '#2a2a40', hair: '#ff8a3a' },
   { suit: '#f2b33a', legs: '#3a2a1a', hair: '#7a4a22' },
 ]
-const PORTAL = new Vector3(-22, 0, 37)
+const PORTAL = new Vector3(-22, 0, 93)
+// x of the walkways between the base columns (and the hub's edges).
+const AISLES = [0, 1].map((i) => BASES[i].maxX + PLOT.aisle / 2)
+const nearestAisle = (x) => AISLES.reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a))
+const TOWN_Z = HUB.town.minZ + 2
+// Town -> band (via an aisle) and band -> town.
+const toBandPath = (x) => {
+  const ax = nearestAisle(x)
+  return [new Vector3(ax, 0, TOWN_Z), new Vector3(ax, 0, BAND.z1 + 1.5), new Vector3(x, 0, BAND.z1 + 1.5), new Vector3(x, 0, (BAND.z0 + BAND.z1) / 2)]
+}
+const toTownPath = (x) => {
+  const ax = nearestAisle(x)
+  return [new Vector3(x, 0, BAND.z1 + 1), new Vector3(ax, 0, BAND.z1 + 1.5), new Vector3(ax, 0, TOWN_Z)]
+}
+const townSpot = () => new Vector3(rnd(-40, 40), 0, rnd(HUB.town.minZ + 4, HUB.town.maxZ - 6))
 
 export function createBots({ scene, animals, darts, events, live }) {
   const names = [...BOT_NAMES].sort(() => Math.random() - 0.5)
@@ -56,7 +71,7 @@ export function createBots({ scene, animals, darts, events, live }) {
       groundT: 0,
       gy: 0,
     }
-    bot.pos.set(rnd(-30, 20), 0, rnd(-20, 30))
+    bot.pos.copy(townSpot())
     bot.tag = addLabel({ pos: () => new Vector3(bot.pos.x, bot.pos.y + 2.25, bot.pos.z), size: 0.55, min: 0.2, max: 0.6, maxDist: 60, className: 'wl-name', html: bot.name })
     bots.push(bot)
   }
@@ -70,9 +85,8 @@ export function createBots({ scene, animals, darts, events, live }) {
     switch (bot.state) {
       case 'idle':
         if (Math.random() < 0.7) {
-          const x = rnd(-40, 40)
-          go(bot, [new Vector3(x, 0, BAND.z1 + 1.5), new Vector3(x, 0, (BAND.z0 + BAND.z1) / 2)], 'toBand')
-        } else go(bot, [new Vector3(rnd(-40, 20), 0, rnd(-28, 36))], 'wander')
+          go(bot, toBandPath(rnd(-45, 45)), 'toBand')
+        } else go(bot, [townSpot()], 'wander')
         break
       case 'wander':
         bot.state = 'idle'
@@ -95,8 +109,8 @@ export function createBots({ scene, animals, darts, events, live }) {
         bot.carried = a
         bot.slept = null
         bot.animator?.setOverlay(POSES.carry)
-        const x = Math.max(-40, Math.min(40, bot.pos.x))
-        go(bot, [new Vector3(x, 0, LANE.maxZ - 4), new Vector3(x, 0, BAND.z0 + 1), new Vector3(x * 0.5, 0, 0), PORTAL], 'carry')
+        const x = Math.max(-45, Math.min(45, bot.pos.x))
+        go(bot, [new Vector3(x, 0, LANE.maxZ - 4), new Vector3(x, 0, BAND.z0 + 1), ...toTownPath(x), PORTAL], 'carry')
         break
       }
       case 'carry': {
@@ -124,9 +138,9 @@ export function createBots({ scene, animals, darts, events, live }) {
     bot.slept = null
     bot.animator?.setOverlay(null)
     bot.gun.visible = false
-    const x = Math.max(-40, Math.min(40, bot.pos.x))
-    if (bot.pos.y < -1) go(bot, [new Vector3(x, 0, LANE.maxZ - 4), new Vector3(x, 0, BAND.z0 + 1), new Vector3(x, 0, -20)], 'return')
-    else go(bot, [new Vector3(x, 0, -20)], 'return')
+    const x = Math.max(-45, Math.min(45, bot.pos.x))
+    if (bot.pos.y < -1) go(bot, [new Vector3(x, 0, LANE.maxZ - 4), new Vector3(x, 0, BAND.z0 + 1), ...toTownPath(x)], 'return')
+    else go(bot, toTownPath(x), 'return')
   }
 
   function aimUpdate(bot, dt) {
@@ -165,7 +179,7 @@ export function createBots({ scene, animals, darts, events, live }) {
       bot.slept = animal
       bot.gun.visible = false
       bot.animator?.setOverlay(null)
-      const x = Math.max(-40, Math.min(40, bot.pos.x))
+      const x = Math.max(-45, Math.min(45, bot.pos.x))
       go(bot, [new Vector3(x, 0, BAND.z0 - 1), new Vector3(x, 0, LANE.maxZ - 4), animal.pos], 'fetch')
     },
     update(dt, ctx) {

@@ -1,28 +1,31 @@
 // Animals: the lane population (wander, graze, flee, sleep, wake) and the pen
 // animals (wander inside the base). One Animal class drives both; the manager
-// spawns the lane by "1 in N" odds (luck boosts rares and mutations), runs dart
-// hit tests and owns the floating labels (aiming tag, sleep ring, value, "!").
+// keeps every area of the lane stocked with that area's animals by "1 in N" odds
+// (luck boosts rares and mutations), runs dart hit tests and owns the floating
+// labels (aiming tag, sleep ring, value, "!"). A lane animal lives in one area
+// (`area`, config LANE_AREAS) and never leaves it.
 import { AdditiveBlending, CylinderGeometry, Group, Mesh, MeshBasicMaterial, Vector3 } from 'three'
-import { ANIMALS, BASE, COARSE_POINTER, LANE, LANE_ANIMALS, MUTATIONS, MUTATION_ORDER, RARITIES, SEASON, STUD, WORLDS, seasonAnimals, worldAnimals } from '../config.js'
+import { ANIMALS, AREA_IDS, BASE, COARSE_POINTER, LANE, LANE_ANIMALS, LANE_AREAS, MUTATIONS, MUTATION_ORDER, RARITIES, SEASON, STUD, WORLDS, seasonAnimals, worldAnimals } from '../config.js'
 import { groundY } from '../physics.js'
 import { addLabel } from '../fx/labels.js'
 import { hearts, puff, shimmer, sparkle, zee } from '../fx/particles.js'
 import { buildAnimal } from './animalModels.js'
-import { fmt, luckMult, state } from './state.js'
+import { fmt, luckMult, state, worldUnlocked } from './state.js'
 import { sfx } from '../audio/index.js'
 
 const rnd = (a, b) => a + Math.random() * (b - a)
 const TAU = Math.PI * 2
 const tmp = new Vector3()
+const fwd = new Vector3()
 const RING = 2 * Math.PI * 54
 const ZERO_POSE = { pitch: 0, push: 0, head: 0 }
 
-// Seasonal animals are worth the current world's mult x SEASON.mult.
-export function rollIncome(species, mutation) {
+// Seasonal animals are worth the mult of the area they roam (`world`) x SEASON.mult.
+export function rollIncome(species, mutation, world = state.world) {
   const d = ANIMALS[species]
   const [lo, hi] = d.income
   const base = lo + (hi - lo) * Math.pow(Math.random(), 1.6)
-  const season = d.world ? 1 : (WORLDS[state.world]?.mult ?? 1) * SEASON.mult
+  const season = d.world ? 1 : (WORLDS[world]?.mult ?? 1) * SEASON.mult
   return Math.max(1, Math.round(base * season * (mutation ? MUTATIONS[mutation].mult : 1)))
 }
 export const oddsOf = (species, mutation) => ANIMALS[species].odds * (mutation ? MUTATIONS[mutation].odds : 1)
@@ -34,14 +37,16 @@ export function displayName(species, mutation) {
 let nextId = 1
 
 export class Animal {
-  constructor(species, mutation, { income, event = false, mode = 'lane', bounds = BASE } = {}) {
+  constructor(species, mutation, { income, event = false, mode = 'lane', bounds = BASE, area = null } = {}) {
     this.id = nextId++
     this.bounds = bounds // the pen this animal lives in (config BASES[i])
+    // The lane area it roams (its own world's area; a seasonal one the area it was spawned in).
+    this.area = LANE_AREAS[area ?? ANIMALS[species]?.world ?? 'meadow'] ?? LANE_AREAS.meadow
     this.species = species
     this.def = ANIMALS[species]
     this.rarity = RARITIES[this.def.rarity]
     this.mutation = mutation
-    this.income = income ?? rollIncome(species, mutation)
+    this.income = income ?? rollIncome(species, mutation, this.area.id)
     this.event = event
     this.mode = mode
     this.model = buildAnimal(species, mutation)
@@ -95,9 +100,9 @@ export class Animal {
       this.target.set(rnd(B.minX + 2, B.maxX - 2), 0, rnd(B.minZ + 2, B.maxZ - 2))
       return
     }
-    const S = LANE.spawn
+    const S = this.area.spawn
     if (this.def.zone === 'marsh') {
-      const P = LANE.pond
+      const P = this.area.pond
       const a = rnd(0, TAU)
       const r = P.r + rnd(2.5, 9)
       this.target.set(P.x + Math.cos(a) * r, LANE.y, P.z + Math.sin(a) * r)
@@ -263,7 +268,7 @@ export class Animal {
       this.pos.y += ((this.groundAt ?? this.pos.y) - this.pos.y) * Math.min(1, dt * 12)
     }
 
-    this.animate(dt)
+    if (this.model.visible) this.animate(dt) // past the view distance: AI only
 
     // Mutation shimmer.
     if (this.mutation || this.event) {
@@ -282,9 +287,11 @@ export class Animal {
       p.x = Math.min(B.maxX - 1.5, Math.max(B.minX + 1.5, p.x))
       p.z = Math.min(B.maxZ - 1.5, Math.max(B.minZ + 1.5, p.z))
     } else {
-      const S = LANE.spawn
+      // Its own area, short of the barriers at either end.
+      const A = this.area
+      const S = A.spawn
       p.x = Math.min(S.maxX + 4, Math.max(S.minX - 4, p.x))
-      p.z = Math.min(S.maxZ + 2, Math.max(S.minZ - 4, p.z))
+      p.z = Math.min(Math.min(S.maxZ + 2, A.maxZ - 1.5), Math.max(A.minZ + 2, p.z))
     }
   }
 
@@ -303,8 +310,7 @@ export class Animal {
     let nz = this.pos.z + Math.cos(this.yaw) * step
     // Push out of obstacles (trees, hay, fences, the pond).
     const r = this.def.radius
-    for (const o of manager?.obstacles ?? []) {
-      if (this.mode === 'pen') break
+    for (const o of (this.mode === 'pen' ? null : manager?.obstacles?.[this.area.id]) ?? []) {
       const ox = nx - o.x
       const oz = nz - o.z
       const d = Math.hypot(ox, oz)
@@ -416,11 +422,14 @@ export class Animal {
     this.lastNum = ''
   }
 
-  updateLabels(showTags) {
+  // viewDist: how far the camera sees right now (tags reach as far, so a scoped shot at a far
+  // area shows its animals' tags).
+  updateLabels(showTags, viewDist = LANE_ANIMALS.labelRange * STUD, nearCross = true) {
     if (this.mode === 'pen') return
     this.ensureLabels()
     const L = this.labels
-    L.tag.visible = showTags && !this.asleep && this.state !== 'leaving'
+    L.tag.maxDist = Math.max(LANE_ANIMALS.labelRange * STUD, viewDist)
+    L.tag.visible = showTags && nearCross && this.model.visible && !this.asleep && this.state !== 'leaving'
     if (L.tag.visible && this.hp !== this.lastHpShown) {
       this.lastHpShown = this.hp
       const dmg = this.hp < this.def.hp ? `<span style="color:#ff6b5a">${'■'.repeat(this.hp)}<span style="opacity:.35">${'■'.repeat(this.def.hp - this.hp)}</span></span> ` : ''
@@ -460,6 +469,7 @@ export class Animal {
 let manager = null
 
 export class AnimalManager {
+  // obstacles: area id -> circles its animals steer round (lane.js).
   constructor(scene, obstacles) {
     manager = this
     this.scene = scene
@@ -468,17 +478,34 @@ export class AnimalManager {
     scene.add(this.group)
     this.list = []
     this.spawnTimer = 0
-    this.target = COARSE_POINTER ? LANE_ANIMALS.countTouch : LANE_ANIMALS.count
+    this.counts = Object.fromEntries(AREA_IDS.map((id) => [id, 0]))
     this.beamMat = new MeshBasicMaterial({ color: '#ffe36a', transparent: true, opacity: 0.25, blending: AdditiveBlending, depthWrite: false })
     this.beamGeo = new CylinderGeometry(0.6, 1.2, 60, 16, 1, true)
-    for (let i = 0; i < this.target; i++) this.spawn()
+    this.fill()
   }
 
-  // The current world's animals by "1 in N" weight (luck favours Rare and up); a seasonal
-  // animal instead with SEASON.chance.
-  pickSpecies() {
+  // How many animals roam area `id` at once (more once the player has opened it).
+  targetFor(id) {
+    const t = COARSE_POINTER ? LANE_ANIMALS.perAreaTouch : LANE_ANIMALS.perArea
+    return worldUnlocked(id) ? t.open : t.locked
+  }
+  // Free-roaming (non-event) animals per area, into this.counts.
+  count() {
+    for (const id of AREA_IDS) this.counts[id] = 0
+    for (const a of this.list) if (!a.event && a.mode === 'lane') this.counts[a.area.id]++
+    return this.counts
+  }
+  // Stock every area up to its target right away (start, or an area just opened).
+  fill() {
+    this.count()
+    for (const id of AREA_IDS) for (let n = this.counts[id]; n < this.targetFor(id); n++) this.spawn(null, undefined, { area: id })
+  }
+
+  // Area `world`'s animals by "1 in N" weight (luck favours Rare and up); a seasonal animal
+  // instead with SEASON.chance.
+  pickSpecies(world = 'meadow') {
     const luck = luckMult()
-    const ids = Math.random() < SEASON.chance ? seasonAnimals() : worldAnimals(state.world)
+    const ids = Math.random() < SEASON.chance ? seasonAnimals() : worldAnimals(world)
     let total = 0
     const w = ids.map((id) => {
       const d = ANIMALS[id]
@@ -498,32 +525,25 @@ export class AnimalManager {
     for (const id of MUTATION_ORDER) if (Math.random() < luck / MUTATIONS[id].odds) return id
     return null
   }
-  // The lane changed world: the free-roaming animals leave (puff) and the new world's fill in.
-  // Sleeping / carried / event animals stay.
-  reroll() {
-    for (const a of [...this.list]) {
-      if (a.event || a.state === 'carried' || a.state === 'asleep') continue
-      puff(tmp.copy(a.pos).setY(a.pos.y + 0.5), '#ffffff', 5)
-      this.remove(a)
-    }
-    while (this.list.filter((a) => !a.event).length < this.target) this.spawn()
-  }
-
+  // opts.area: the area to spawn in (default: the species' own world, else the Meadow).
   spawn(species = null, mutation = undefined, opts = {}) {
-    species ??= this.pickSpecies()
+    const area = opts.area ?? (species && ANIMALS[species]?.world) ?? 'meadow'
+    species ??= this.pickSpecies(area)
     if (mutation === undefined) mutation = this.pickMutation()
-    const a = new Animal(species, mutation, opts)
-    const S = LANE.spawn
+    const a = new Animal(species, mutation, { ...opts, area })
+    const A = a.area
+    const S = A.spawn
+    const obs = this.obstacles[A.id] ?? []
     for (let tries = 0; tries < 30; tries++) {
       let x = rnd(S.minX, S.maxX)
       let z = rnd(S.minZ, S.maxZ)
       if (a.def.zone === 'marsh') {
         const ang = rnd(0, TAU)
-        const r = LANE.pond.r + rnd(3, 8)
-        x = LANE.pond.x + Math.cos(ang) * r
-        z = LANE.pond.z + Math.sin(ang) * r
+        const r = A.pond.r + rnd(3, 8)
+        x = A.pond.x + Math.cos(ang) * r
+        z = A.pond.z + Math.sin(ang) * r
       }
-      if (this.obstacles.some((o) => Math.hypot(x - o.x, z - o.z) < o.r + a.def.radius + 0.5)) continue
+      if (obs.some((o) => Math.hypot(x - o.x, z - o.z) < o.r + a.def.radius + 0.5)) continue
       a.pos.set(x, LANE.y, z)
       break
     }
@@ -586,21 +606,47 @@ export class AnimalManager {
     return best
   }
 
+  // ctx: { camZ, viewDist } decide what is drawn: an animal further down the lane than the view
+  // distance is hidden (and skips its animation) until the camera comes near or scopes in.
+  // ctx.camera (while scoped): tags only on the animals near the crosshair, so a far scope view
+  // full of animals stays readable.
   update(dt, ctx) {
+    const camZ = ctx.camZ ?? 0
+    const view = ctx.viewDist ?? Infinity
+    const cam = ctx.showTags ? ctx.camera : null
+    let cosTag = -2
+    if (cam) {
+      cam.getWorldDirection(fwd)
+      cosTag = Math.cos(((cam.fov * Math.PI) / 180) * LANE_ANIMALS.tagCone)
+    }
     for (let i = this.list.length - 1; i >= 0; i--) {
       const a = this.list[i]
+      a.model.visible = a.state === 'carried' || Math.abs(a.pos.z - camZ) < view
       a.update(dt, ctx)
-      a.updateLabels(ctx.showTags)
+      let nearCross = true
+      if (cam) {
+        tmp.copy(a.pos).setY(a.pos.y + a.rig.centerY).sub(cam.position)
+        nearCross = tmp.dot(fwd) > tmp.length() * cosTag
+      }
+      a.updateLabels(ctx.showTags, view, nearCross)
       if (a.beam) a.beam.material.opacity = 0.18 + Math.sin(a.age * 3) * 0.08
       if (a.gone) this.remove(a)
     }
-    const lane = this.list.filter((a) => !a.event).length
-    if (lane < this.target) {
-      this.spawnTimer -= dt
-      if (this.spawnTimer <= 0) {
-        this.spawnTimer = LANE_ANIMALS.respawn
-        this.spawn()
+    // One refill at a time, into the area furthest below its target.
+    this.spawnTimer -= dt
+    if (this.spawnTimer <= 0) {
+      this.spawnTimer = LANE_ANIMALS.respawn
+      this.count()
+      let best = null
+      let gap = 0
+      for (const id of AREA_IDS) {
+        const g = this.targetFor(id) - this.counts[id]
+        if (g > gap) {
+          gap = g
+          best = id
+        }
       }
+      if (best) this.spawn(null, undefined, { area: best })
     }
   }
 }

@@ -23,6 +23,7 @@ root.innerHTML = `
     <div class="tr-row">
       <div class="mini">
         <button class="iconbtn gear" data-act="settings" title="Settings">${ICONS.gear}</button>
+        <button class="iconbtn invite" data-act="invite" title="Invite friends to your room">👥</button>
       </div>
       <button class="bp ol" data-act="bp">BATTLE PASS · LVL <b class="bp-l">0</b><div class="bar"><i></i></div></button>
       <button class="ready ol" data-act="gift">READY!</button>

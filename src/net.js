@@ -8,14 +8,43 @@
 // their progress in this browser instead (localStorage, SAVE_KEY); it is loaded at start.
 // The server also runs the Playtime Rewards clock (`playtime` / `claimPlaytime`, kept in
 // net.playtime; see game/playtime.js) and the leaderboards (`leaderboard`).
+// Multiplayer: one room = ROOM_SIZE (6) players. The server hands every player a base `slot`
+// (net.slot) and relays what the others need to draw them: pose (`sendPose`), their base's animals /
+// treadmill / cosmetics (`sendBase`) and emotes (`sendEmote`), read back through net.players().
+// Bloxity: the join carries the SDK token (the server verifies it), the room id is reported with
+// updateRoom so friend invites land in it, and rewarded-ad claims are verified server-side.
 // Never throws and never blocks play: without a server the game runs on the browser save.
 import { Client } from '@colyseus/sdk'
 import { DEV_MODE, NET, SERVER_URL } from './config.js'
 import { emit, hydrate, readLocal, setSaver, snapshot, writeLocal } from './game/state.js'
-import { authState, canResolveServer, getPfp, resolveServerEndpoint, subscribeAuth } from './bloxity.js'
+import { authState, canResolveServer, getPfp, getToken, launchRoomId, locateRoom, onEnvironmentChanged, playerInRoom, playerJoined, resolveServerEndpoint, subscribeAuth, updateRoom } from './bloxity.js'
 
 // playtime: { seconds, claimed, at (performance.now() when received) } from the server, or null.
-export const net = { room: null, connected: false, hydrated: false, playtime: null, boards: null }
+export const net = {
+  room: null,
+  connected: false,
+  hydrated: false,
+  playtime: null,
+  boards: null,
+  sessionId: '',
+  // This player's base slot (0..ROOM_SIZE-1) once the server has assigned it, else -1.
+  get slot() {
+    const p = this.me()
+    return p && Number.isInteger(p.slot) ? p.slot : -1
+  },
+  // The room roster entry of this player / of a session, or undefined.
+  me() {
+    return this.room?.state?.players?.get?.(this.sessionId)
+  },
+  // fn(player, sessionId, isMe) for everyone in the room (state is decoded in place: just read it).
+  players(fn) {
+    try {
+      this.room?.state?.players?.forEach?.((p, sid) => fn(p, sid, sid === this.sessionId))
+    } catch {
+      // The room is closing.
+    }
+  },
+}
 
 // --- Identity ---------------------------------------------------------------------
 // Signed-in players use their Bloxity id; everyone else a per-browser guest id (never saved on
@@ -39,7 +68,8 @@ function identity() {
   const u = authState.user
   const id = u && (u._id || u.id || u.userId || u.uid)
   if (!id) return { userId: GUEST, username: authState.guest?.displayName || authState.guest?.username || 'Guest' }
-  return { userId: String(id), username: String(u.displayName || u.username || u.name || 'Player') }
+  // The token is what the server trusts (it asks Bloxity who it belongs to); the id only picks the save slot locally.
+  return { userId: String(id), username: String(u.displayName || u.username || u.name || 'Player'), token: getToken() }
 }
 const isGuestId = (id) => id.startsWith('guest-')
 export const hasServer = () => !!(SERVER_URL || canResolveServer())
@@ -95,6 +125,36 @@ function request(type, payload, answer) {
 }
 // { ok, i, seconds, claimed } | { ok: false, i, reason: 'loading' | 'early' | 'claimed' | 'save' | ... }
 export const claimPlaytimeOnServer = (i) => request('claimPlaytime', { i }, 'playtimeResult')
+// A rewarded ad was watched: the server verifies the token with Bloxity. { ok, placement, reason? }
+export const claimAdReward = (placement, token) => request('adReward', { placement, token }, 'adRewardResult')
+
+// --- Presence (what the others draw) -------------------------------------------------------
+// Pose ~10x/s: { x, y, z, yaw, speed, tm (on the treadmill), aim, carry ('species:mutation' | '') }.
+let lastPose = ''
+export function sendPose(pose) {
+  if (!net.connected) return
+  const key = JSON.stringify(pose)
+  if (key === lastPose) return
+  lastPose = key
+  send('pose', pose)
+}
+// The base: { animals: [{ species, mutation }], level, tml, steps, trail, aura, weapon, world }, only when it changed.
+let lastBase = ''
+export function sendBase(base) {
+  if (!net.connected) return
+  const key = JSON.stringify(base)
+  if (key === lastBase) return
+  lastBase = key
+  send('base', base)
+}
+// The look from the Bloxity customizer (opaque JSON the others dress the avatar with).
+let lastAvatar = ''
+export function sendAvatar(json) {
+  if (!net.connected || typeof json !== 'string' || json === lastAvatar || json.length > 3000) return
+  lastAvatar = json
+  send('setAvatar', { avatar: json })
+}
+export const sendEmote = (id) => net.connected && send('emote', { id })
 function setPlaytime(msg) {
   if (typeof msg?.seconds !== 'number' || !Array.isArray(msg?.claimed)) return
   net.playtime = { seconds: msg.seconds, claimed: msg.claimed.filter(Number.isInteger), at: performance.now() }
@@ -105,6 +165,13 @@ function setPlaytime(msg) {
 function attach(room) {
   net.room = room
   net.connected = true
+  net.sessionId = room.sessionId
+  lastPose = lastBase = lastAvatar = ''
+  // Friends' invites land in this room; the portal lists who is in it.
+  updateRoom(room.roomId)
+  playerJoined(identity().username)
+  setTimeout(() => net.players((p, sid, me) => !me && playerInRoom(p.username)), 1500)
+  emit('room', room)
   room.onMessage('progress', (doc) => {
     net.hydrated = true
     lastSaved = ''
@@ -125,6 +192,7 @@ function attach(room) {
     console.warn('[net] the server could not read the saved progress; saving is off for this session')
   })
   room.onMessage('playtime', setPlaytime)
+  room.onMessage('adRewardResult', (r) => waiting.adRewardResult?.(r))
   room.onMessage('*', () => {}) // the server's other messages (spins, daily: not used by this game)
   room.onMessage('playtimeResult', (r) => {
     setPlaytime(r)
@@ -140,15 +208,42 @@ function attach(room) {
     net.connected = false
     net.hydrated = false
     net.playtime = null
+    net.sessionId = ''
+    updateRoom('')
+    emit('room', null)
     emit('playtime')
     setTimeout(connect, NET.retry * 1000)
   })
 }
 
+// The ?roomId= the page opened with (a friend's invite / the game page's Join button) is tried once
+// first: the room it names, if it still has a seat; anything else falls back to the matchmaker.
+let launchTried = false
 async function joinRoom(options) {
   if (SERVER_URL) return new Client(SERVER_URL).joinOrCreate('world', options)
-  const { endpoint } = await resolveServerEndpoint(/^(guest|dev)-/.test(options.userId) ? undefined : options.userId)
-  return new Client(endpoint).joinOrCreate('world', options)
+  if (!launchTried) {
+    launchTried = true
+    try {
+      const where = await locateRoom(launchRoomId())
+      if (where) return await new Client(where.endpoint).joinById(where.roomId, options)
+    } catch (err) {
+      console.info('[net] the invited room could not be joined; matchmaking instead', err?.message ?? err)
+    }
+  }
+  // A new Client per resolve: every endpoint is pinned to one pod. A cold start can take ~45 s, so
+  // the matchmaker is retried with backoff for up to NET.joinWindow seconds.
+  const deadline = performance.now() + NET.joinWindow * 1000
+  let wait = 1500
+  for (;;) {
+    try {
+      const { endpoint } = await resolveServerEndpoint(/^(guest|dev)-/.test(options.userId) ? undefined : options.userId)
+      return await new Client(endpoint).joinOrCreate('world', options)
+    } catch (err) {
+      if (performance.now() + wait > deadline) throw err
+      await new Promise((r) => setTimeout(r, wait))
+      wait = Math.min(wait * 2, 8000)
+    }
+  }
 }
 
 let connecting = false
@@ -159,7 +254,7 @@ async function connect() {
   try {
     const id = identity()
     sentId = id.userId
-    const room = await joinRoom({ ...id, pfp: getPfp() })
+    const room = await joinRoom({ ...id, pfp: getPfp(), pose: joinPose?.(), avatar: joinAvatar?.() })
     retryIn = NET.retry
     attach(room)
   } catch (err) {
@@ -169,6 +264,14 @@ async function connect() {
   } finally {
     connecting = false
   }
+}
+
+// main.js supplies where the player stands / what they wear so the others draw them the moment they join.
+let joinPose = null
+let joinAvatar = null
+export function setJoinPresence(pose, avatar) {
+  joinPose = pose
+  joinAvatar = avatar
 }
 
 // Boot: the browser save first (a guest plays on it; a signed-in player until the server
@@ -188,7 +291,7 @@ export function initNet() {
     if (!s.ready && !DEV) return
     if (!net.connected) return void connect()
     const id = identity()
-    if (id.userId === sentId) return send('identify', { username: id.username, pfp: getPfp() })
+    if (id.userId === sentId) return send('identify', { username: id.username, pfp: getPfp(), token: id.token })
     // Save under the OLD identity before switching (auth has already moved on).
     if (isGuestId(sentId)) writeLocal()
     else serverSave()
@@ -197,5 +300,14 @@ export function initNet() {
     if (isGuestId(id.userId)) hydrate(readLocal())
     sentId = id.userId
     send('identify', { ...id, pfp: getPfp() })
+  })
+  // Prod <-> stage switched at runtime: leave and let the retry loop resolve the new endpoint.
+  onEnvironmentChanged(() => {
+    launchTried = true
+    try {
+      net.room?.leave()
+    } catch {
+      // Already gone.
+    }
   })
 }

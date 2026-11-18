@@ -9,7 +9,7 @@ export const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
 
 // --- World (metres: +X east, +Z south, +Y up) -------------------------------
 export const GROUND_Y = 0
-export const SPAWN = { x: 0, y: 0.05, z: 12 }
+export const SPAWN = { x: 0, y: 0.05, z: 56 } // the town's north edge (main.js moves your spawn to your own base)
 export const SPAWN_FACING = Math.PI // yaw the character faces on spawn (PI = toward -Z, the lane)
 
 // --- Player modes (modes.js) -------------------------------------------------
@@ -42,7 +42,10 @@ export const PLAYER_DIMS = { radius: 0.75, height: 1.8 } // capsule the characte
 
 // --- Look ------------------------------------------------------------------
 export const RENDER = { exposure: 1.0 }
-export const FOG = { near: 160, far: 520 }
+// Normal view distance: kept short (far lane areas past `far` are not drawn at all, main.js
+// `applyView`). Scoping in pushes it out to the weapon's range (AIM.scopeView) so a far area can
+// be aimed at clearly.
+export const FOG = { near: 100, far: 230 }
 // The two lighting moods lighting.js blends between (key N toggles).
 export const TIME_OF_DAY = {
   transition: 2.5, // s to blend day <-> night
@@ -268,43 +271,64 @@ export const STUD = 0.3 // m per stud
 
 // --- World layout (world/*.js) ---------------------------------------------------------
 // The hub is a flat plateau at y = 0. Its north edge is the yellow aiming band; past it a
-// grass slope drops to the lane, a long meadow at LANE.y where the animals roam.
+// grass slope drops to the lane at LANE.y. The lane holds every area (WORLDS) one after the
+// other, AREA_DEPTH m each: Meadow at the foot of the slope, then Marsh, Forest, Mountain and
+// Volcano, which ends at the terraced cliff face. Green barriers between them open with guns.
 export const HUB = {
-  minX: -55, maxX: 55, minZ: -42, maxZ: 46, // plateau extent (the band is part of it)
+  minX: -55, maxX: 55, minZ: -42, maxZ: 100, // plateau extent (the band is part of it)
+  // North to south: the band, the front row (Next Event sign, events board, Dart Shop, gift; z -38..-22),
+  // the six bases (z -22..50), the town (other shops, portal) and the leaderboards on the south wall.
+  town: { minZ: 52, maxZ: 98 },
   tile: 8, // m per checker tile (two squares)
   wallHeight: 13,
 }
 export const BAND = { z0: -42, z1: -38.2 } // the yellow band: z from z0 (lane edge) to z1 (hub side)
-export const SLOPE = { z0: -42, z1: -57 } // grass slope from the band down to the lane floor
+// Grass slope from the band down to the lane floor (16 m down over 33 m). The lane lies this deep
+// so the band looks DOWN the lane: aiming from ~18 m up clears the props in front of far animals.
+export const SLOPE = { z0: -42, z1: -75 }
+export const AREA_DEPTH = 70 // m of lane per area (5 areas: z -75 .. -425)
+const AREA_COUNT = 5 // = Object.keys(WORLDS).length
 export const LANE = {
-  y: -7,
-  minX: -55, maxX: 55, minZ: -160, maxZ: -57,
-  spawn: { minX: -48, maxX: 48, minZ: -150, maxZ: -64 }, // where animals roam
-  pond: { x: -22, z: -92, r: 11 }, // the marsh pond (herons live here)
+  y: -16,
+  minX: -55, maxX: 55, minZ: SLOPE.z1 - AREA_DEPTH * AREA_COUNT, maxZ: SLOPE.z1,
+  // Animals roam |x| <= roamX; tall props (trees, pines) stand in the strips treeX[0]..treeX[1]
+  // along both sides so the view down the lane to the far areas stays open.
+  roamX: 34,
+  treeX: [37, 51],
+  // Whole-lane roaming bounds (each area narrows z to its own stretch, LANE_AREAS).
+  spawn: { minX: -34, maxX: 34, minZ: SLOPE.z1 - AREA_DEPTH * AREA_COUNT + 5, maxZ: SLOPE.z1 - 7 },
   wallHeight: 42,
 }
-// The green barrier across the far (north) end of the lane (world/barrier.js): a glowing force
-// field with a big sign naming the next area and the gun that opens it. Behind it, `depth` m of
-// ground tinted as the next area (the lane runs on), ending in a terraced cliff face.
-export const BARRIER = { z: LANE.minZ, depth: 140, height: 26, sign: { w: 48, h: 16, y: 5 } }
+// The green barriers between areas (world/barrier.js): a glowing force field at the far end of
+// each area with a big sign naming the next area and the gun that opens it. Owning the gun
+// opens it (field, sign and collider go; the edge pylons stay as a gate).
+export const BARRIER = { height: 26, sign: { w: 48, h: 16, y: 5 } }
 // One room holds ROOM_SIZE players (the backend's ROOM_MAX_CLIENTS, keep them equal) and every
 // player owns one of ROOM_SIZE bases, laid out in the hub's east half as a 2 x 3 grid of plots.
 // A plot = a fenced pen (its gate in the west fence) + the owner's treadmill and the pen-upgrade
 // sign in the strip west of it. The server hands out the slot (0..ROOM_SIZE-1) when you join.
 export const ROOM_SIZE = 6
-export const PLOT = { w: 25, d: 23, x0: 4, z0: -27 }
+// The bases sit between the front row (Next Event sign) and the town / leaderboards: 3 columns x
+// 2 rows. Each plot = an 8 m strip with the owner's treadmill and pen-upgrade sign, then a 31 x 28 m
+// fenced pen whose gate is in its NORTH fence (facing the band, so a carry home stays short).
+// 6.5 m aisles between the columns lead from the town up to the band.
+export const PLOT = { penW: 31, penD: 28, strip: 8, aisle: 6.5, x0: -53, rowZ: [-14, 22] }
 function makeBase(slot) {
-  const x0 = PLOT.x0 + (slot % 2) * PLOT.w
-  const z0 = PLOT.z0 + Math.floor(slot / 2) * PLOT.d
+  const minX = PLOT.x0 + (slot % 3) * (PLOT.penW + PLOT.aisle)
+  const minZ = PLOT.rowZ[Math.floor(slot / 3)]
+  const maxX = minX + PLOT.penW
+  const maxZ = minZ + PLOT.penD
+  const midX = (minX + maxX) / 2
   return {
     slot,
-    plot: { minX: x0, maxX: x0 + PLOT.w, minZ: z0, maxZ: z0 + PLOT.d },
-    minX: x0 + 9, maxX: x0 + 25, minZ: z0 + 4, maxZ: z0 + 19, // the fenced pen
-    gateZ: [z0 + 8.5, z0 + 15.5], // gap in the west fence
-    treadmill: { x: x0 + 3, z: z0 + 4.5 },
-    // Where its owner appears (outside the gate, facing the pen).
-    spawn: { x: x0 + 6, y: 0.05, z: z0 + 12 },
-    facing: Math.PI / 2,
+    plot: { minX, maxX, minZ: minZ - PLOT.strip, maxZ },
+    minX, maxX, minZ, maxZ, // the fenced pen
+    gateX: [midX - 4, midX + 4], // gap in the north fence
+    treadmill: { x: minX + 4, z: minZ - 3.6 },
+    upgradeSign: { x: maxX - 5, z: minZ - 4.5 },
+    // Where its owner appears (in front of the gate, facing the band).
+    spawn: { x: midX, y: 0.05, z: minZ - 4.5 },
+    facing: Math.PI,
   }
 }
 export const BASES = Array.from({ length: ROOM_SIZE }, (_, i) => makeBase(i))
@@ -313,8 +337,8 @@ export const inAnyPlot = (x, z, pad = 0) => BASES.some((b) => x > b.plot.minX - 
 
 // --- Rarities, worlds + animals (game/animals.js, ui/panels.js Index) -----------------------------
 // Every world has one animal of each rarity (the Index shows them as grey, green, blue, purple,
-// yellow and red cards). The lane is themed as the player's current world (WORLDS, picked at the
-// portal) and spawns that world's animals; the Halloween season mixes its own animals in.
+// yellow and red cards). Every world is an area of the lane (LANE_AREAS, in WORLDS order) that
+// spawns its own six animals; the Halloween season mixes its own animals into every area.
 export const RARITIES = {
   common: { name: 'Common', color: '#f4f4f4', card: '#8d9099', tier: 0 },
   uncommon: { name: 'Uncommon', color: '#8dff6a', card: '#3fc24a', tier: 1 },
@@ -339,6 +363,30 @@ export const WORLDS = {
   volcano: { name: 'Volcano', mult: 3500, weapon: 'voidReaper', reward: { money: 1.5e11, steps: 500000 } },
 }
 export const START_WORLD = 'meadow'
+// Each world's stretch of the lane (north = -z): z from minZ (its far end, where the barrier to
+// the next area stands) to maxZ, where its animals roam (`spawn`) and its pond (`pond`).
+export const AREA_IDS = Object.keys(WORLDS)
+const POND_X = [-22, 22, -20, 20, -22]
+export const LANE_AREAS = Object.fromEntries(
+  AREA_IDS.map((id, i) => {
+    const maxZ = LANE.maxZ - i * AREA_DEPTH
+    const minZ = maxZ - AREA_DEPTH
+    return [id, {
+      id,
+      index: i,
+      minZ,
+      maxZ,
+      spawn: { minX: -LANE.roamX, maxX: LANE.roamX, minZ: minZ + 5, maxZ: maxZ - (i === 0 ? 7 : 5) },
+      pond: { x: POND_X[i], z: (minZ + maxZ) / 2 + (i % 2 ? -6 : 4), r: 10 },
+    }]
+  }),
+)
+// The area a lane z lies in (null on the hub / slope).
+export function areaAt(z) {
+  if (z > LANE.maxZ) return null
+  const i = Math.min(AREA_IDS.length - 1, Math.max(0, Math.floor((LANE.maxZ - z) / AREA_DEPTH)))
+  return AREA_IDS[i]
+}
 // Voxel body each animal is built from (game/animalModels.js) and its physical defaults:
 // speed m/s wandering (flee x2.2), weight = carry speed multiplier, radius = hit sphere (m, x scale).
 const MODELS = {
@@ -462,13 +510,16 @@ export const MUTATION_MILESTONES = [
   { n: 30, aura: true }, // the aura `${mutation}` in COSMETICS.auras
 ]
 export const LANE_ANIMALS = {
-  count: 24, // animals roaming the lane at once (touch: countTouch)
-  countTouch: 16,
+  // Animals roaming each area at once: `open` for areas the player has unlocked, `locked` for the
+  // ones still behind a barrier (seen from afar); touch devices use the smaller pair.
+  perArea: { open: 14, locked: 5 },
+  perAreaTouch: { open: 9, locked: 3 },
   respawn: 2.5, // s between refills when below count
   wakeFlee: 6, // s an animal sprints away after waking up / being hit
   hpRegen: 12, // s after the last hit before a partly-dazed animal recovers
   alert: 1.4, // s the "!" stays over an animal that was shot at
-  labelRange: 260, // studs: aiming labels shown within this distance
+  labelRange: 260, // studs: aiming labels shown within this distance (further while scoped)
+  tagCone: 0.22, // while scoped, tags show on animals within this fraction of the scope's fov of the crosshair
 }
 // Angry animals (game/danger.js): step into the lane (past the band) with none of your own
 // darted animals asleep or carried and the awake ones nearby turn on you. They notice (rear up,
@@ -521,12 +572,15 @@ export const EVENTS = {
 // (SPREAD rad); magazine = darts per shot. Owning one unlocks the worlds that ask for it
 // (WORLDS[w].weapon) and every world below it.
 export const WEAPONS = {
-  blowpipe: { name: 'Blowpipe', range: 245, cooldown: 0.55, speed: 80, drop: 3, damage: 1, price: 0, scope: 'Simple Sight', zooms: 1, spread: 'High', magazine: 1 },
-  pistol: { name: 'Dart Pistol', range: 300, cooldown: 0.26, speed: 95, drop: 4, damage: 1, price: 2500, scope: 'Simple Sight', zooms: 1, spread: 'High', magazine: 1 },
-  rifle: { name: 'Short Scope Rifle', range: 430, cooldown: 0.9, speed: 140, drop: 2, damage: 2, price: 90000, scope: 'Short Scope', zooms: 2, spread: 'Low', magazine: 1 },
-  carbine: { name: 'Long Range Carbine', range: 680, cooldown: 1, speed: 175, drop: 1.4, damage: 3, price: 5e6, scope: 'Long Scope', zooms: 3, spread: 'Low', magazine: 1 },
-  sniper: { name: 'Giant Sniper', range: 1150, cooldown: 1.3, speed: 230, drop: 0.8, damage: 5, price: 3.5e8, scope: 'Big Scope', zooms: 3, spread: 'None', magazine: 1 },
-  voidReaper: { name: 'Void Reaper', range: 1150, cooldown: 0.8, speed: 250, drop: 0.5, damage: 8, price: 3e10, scope: 'Void Scope', zooms: 3, spread: 'None', magazine: 1 },
+  // Ranges reach from the yellow band to the far end of the area each gun opens (studs; from the
+  // band the areas end ~107 / 177 / 247 / 317 / 387 m away): blowpipe Meadow, rifle Marsh,
+  // carbine Forest, sniper Mountain, Void Reaper Volcano.
+  blowpipe: { name: 'Blowpipe', range: 375, cooldown: 0.55, speed: 80, drop: 3, damage: 1, price: 0, scope: 'Simple Sight', zooms: 1, spread: 'High', magazine: 1 },
+  pistol: { name: 'Dart Pistol', range: 400, cooldown: 0.26, speed: 95, drop: 4, damage: 1, price: 2500, scope: 'Simple Sight', zooms: 1, spread: 'High', magazine: 1 },
+  rifle: { name: 'Short Scope Rifle', range: 610, cooldown: 0.9, speed: 140, drop: 2, damage: 2, price: 90000, scope: 'Short Scope', zooms: 2, spread: 'Low', magazine: 1 },
+  carbine: { name: 'Long Range Carbine', range: 845, cooldown: 1, speed: 175, drop: 1.4, damage: 3, price: 5e6, scope: 'Long Scope', zooms: 3, spread: 'Low', magazine: 1 },
+  sniper: { name: 'Giant Sniper', range: 1080, cooldown: 1.3, speed: 230, drop: 0.8, damage: 5, price: 3.5e8, scope: 'Big Scope', zooms: 4, spread: 'None', magazine: 1 },
+  voidReaper: { name: 'Void Reaper', range: 1315, cooldown: 0.8, speed: 250, drop: 0.5, damage: 8, price: 3e10, scope: 'Void Scope', zooms: 4, spread: 'None', magazine: 1 },
 }
 export const SPREAD = { High: 0.01, Low: 0.0035, None: 0 } // rad of random aim wobble per shot
 // Darts (DARTS window). classic: sleep = s the animal sleeps, bonus = extra damage. special:
@@ -553,7 +607,10 @@ export const FREE_DARTS = { below: 5, give: 15 } // broke and out of darts: the 
 // --- Aiming (game/aim.js) -----------------------------------------------------------------
 export const AIM = {
   fov: 68,
-  scopeFovs: [24, 13, 7], // zoom levels (- / + / wheel); a weapon uses the first WEAPONS[w].zooms
+  scopeFovs: [24, 13, 7, 4], // zoom levels (- / + / wheel); a weapon uses the first WEAPONS[w].zooms
+  // While scoped the view distance (fog + what is drawn) opens to the weapon's range + `clear` m
+  // fog-free and fades out over `fade` m more, so every animal in range is sharp.
+  scopeView: { clear: 15, fade: 80 },
   sensitivity: 0.0022, // rad per pixel at AIM.fov (scaled down with zoom)
   eye: 1.62, // m above the feet
   minPitch: -1.2,
@@ -584,7 +641,7 @@ export const BOOSTS = {
 }
 // Treadmill x2 (a Playtime reward, not sold): steps per treadmill step doubled while it lasts.
 export const TREAD_BOOST = { mult: 2 }
-export const GIFT = { every: 600, base: 250, perIncome: 60, darts: 10 }
+export const GIFT = { every: 600, base: 250, perIncome: 60, darts: 10, dart: 'reinforced' } // dart: a DARTS id
 export const OFFLINE = { cap: 8 * 3600, rate: 0.5 } // offline income: up to cap s at rate x
 export const BATTLE_PASS = { xpPerLevel: 100, levels: 25, playXp: 40, playEvery: 300, captureXp: [10, 18, 30, 60, 150, 400] }
 export const GOALS = [
