@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { ACESFilmicToneMapping, Clock, Group, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three'
-import { AIM, AREA_IDS, BASES, BATTLE_PASS, CAMERA, FOG, LANE, LANE_AREAS, MUTATIONS, NET, SKINS, STUD, WEAPONS, WORLDS, areaAt, graphicsPreset, RENDER } from './config.js'
+import { AIM, AREA_IDS, BASES, BATTLE_PASS, CAMERA, FOG, LANE, LANE_AREAS, MUTATIONS, NET, SKINS, STUD, TREADMILL, WEAPONS, WORLDS, areaAt, graphicsPreset, RENDER } from './config.js'
 import * as bloxity from './bloxity.js'
 import { install as installInput, onKey, setLockPolicy, isLocked } from './input.js'
 import { installTouch } from './touch.js'
@@ -469,8 +469,10 @@ function frame(forcedDt) {
   playerGroup.position.set(p.x, p.y, p.z)
   playerGroup.rotation.y = player.facing
   const speed = Math.hypot(player.velocity.x, player.velocity.z)
-  animator?.update(dt, { grounded: player.grounded, speed, verticalVelocity: player.velocity.y, turn: 0 })
-  if (speed > 1.5 || aim.active) localEmote.stop() // moving or aiming ends an emote
+  // On the treadmill the avatar runs in place even when standing still (steps accrue without W).
+  const animSpeed = base.treadmillRunning ? Math.max(speed, TREADMILL.runAnim) : speed
+  animator?.update(dt, { grounded: player.grounded, speed: animSpeed, verticalVelocity: player.velocity.y, turn: 0 })
+  if (animSpeed > 1.5 || aim.active) localEmote.stop() // moving, running the mill or aiming ends an emote
   localEmote.update(dt)
   syncSlot()
 

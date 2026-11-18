@@ -632,7 +632,7 @@ export const PEN = {
   sellSeconds: 90, // selling an animal pays this many seconds of its income
   oldCapacity: [4, 6, 8, 10, 13, 16], // v1 saves: pen level -> capacity (migrated to slots)
 }
-export const TREADMILL = { unlock: 100, perStep: [1, 5, 25, 120], upgrade: [5000, 80000, 1200000], stepEvery: 0.36, speedPer: 0.5, stepsPer: 300, maxBonus: 7 }
+export const TREADMILL = { unlock: 100, perStep: [1, 5, 25, 120], upgrade: [5000, 80000, 1200000], stepEvery: 0.36, speedPer: 0.5, stepsPer: 300, maxBonus: 7, runAnim: 8 } // runAnim: m/s the avatar runs in place at on an unlocked mill (steps accrue just by standing on it, no W)
 export const START = { money: 60, darts: { basic: 30 } }
 export const CARRY = { pickupRange: 3.4 }
 export const BOOSTS = {

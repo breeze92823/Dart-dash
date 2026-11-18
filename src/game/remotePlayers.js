@@ -4,7 +4,7 @@
 // place by Colyseus, so each frame just reads it and eases toward the latest pose (~10 Hz).
 import * as THREE from 'three'
 import { Group, Vector3 } from 'three'
-import { ANIMALS, POSES, WEAPONS } from '../config.js'
+import { ANIMALS, POSES, TREADMILL, WEAPONS } from '../config.js'
 import { addLabel } from '../fx/labels.js'
 import { buildDefaultCharacter, loadBaseCharacter } from '../avatar/character.js'
 import { applyProportions, attachEquippedAccessories, disposeKit, dressWithKit, updateKitLook } from '../avatar/loader.js'
@@ -13,6 +13,7 @@ import { disposeAnimator, makeAnimator } from '../avatar/animator.js'
 import { EmotePlayer } from '../avatar/emotes.js'
 import { buildAnimal } from './animalModels.js'
 import { buildWeapon } from './weapons.js'
+import { createAuraFx } from './cosmetics.js'
 import { attachChatBubble, chatBubbleText, loadEmotes, validOutfitKey } from '../bloxity.js'
 import { net } from '../net.js'
 
@@ -83,6 +84,7 @@ export function createRemotePlayers({ scene }) {
       seen: false,
       tag: null,
       slot: p.slot,
+      fx: createAuraFx(), // their equipped aura + trail particles (the roster's `aura` / `trail` ids)
     }
     r.emote = new EmotePlayer(() => r.animator?.rig?.bindings ?? [])
     setBody(r, buildDefaultCharacter(OUTFITS[Math.max(0, p.slot) % OUTFITS.length]))
@@ -233,10 +235,13 @@ export function createRemotePlayers({ scene }) {
           r.emoteSeq = p.emoteSeq
           r.emote.play(p.emote, emotes.get(p.emote))
         }
-        if (r.speed > 1.5 && r.emote.playing) r.emote.stop()
+        // On their treadmill (`tm`) they run in place even when standing still.
+        const animSpeed = p.tm ? Math.max(r.speed, TREADMILL.runAnim) : r.speed
+        if (animSpeed > 1.5 && r.emote.playing) r.emote.stop()
 
-        r.animator?.update(dt, { grounded: true, speed: r.speed > 0.4 ? r.speed : 0, verticalVelocity: 0, turn: 0 })
+        r.animator?.update(dt, { grounded: true, speed: animSpeed > 0.4 ? animSpeed : 0, verticalVelocity: 0, turn: 0 })
         r.emote.update(dt)
+        r.fx.update(dt, r.pos, { trail: p.trail, aura: p.aura, moving: r.speed > 1.5, visible: r.group.visible })
       })
       for (const r of [...remotes.values()]) if (!live.has(r.sid)) remove(r)
     },

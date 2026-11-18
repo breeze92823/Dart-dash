@@ -377,11 +377,16 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
         }
       }
 
-      // Treadmill: steps while you walk on it.
+      // Treadmill: steps accrue automatically while you stand / walk on it (no W needed); the belt keeps
+      // you centred and you run in place, facing the console (the mill faces -z).
       player.speedBonus = speedBonus()
       const onMill = inside(treadZone(), player.position) && player.grounded
       const moving = Math.hypot(player.velocity.x, player.velocity.z) > 2
-      training = onMill && moving && state.treadmill.unlocked
+      training = onMill && state.treadmill.unlocked
+      if (training && !moving && !player.locked) {
+        const d = Math.atan2(Math.sin(Math.PI - player.facing), Math.cos(Math.PI - player.facing))
+        player.facing += d * Math.min(1, dt * 8)
+      }
       player.belt = training ? millPull : null
       runner.x = player.position.x
       runner.y = player.position.y
@@ -389,7 +394,7 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
       runner.facing = player.facing
       runner.speed = Math.hypot(player.velocity.x, player.velocity.z)
       animateMill(mine(), dt, { training, runner, unlocked: state.treadmill.unlocked, view: millView(), near: ctx.near })
-      if (onMill && moving) {
+      if (onMill && (moving || state.treadmill.unlocked)) {
         if (!state.treadmill.unlocked) {
           if (stepTimer <= 0) {
             hud.toast(`Unlock the treadmill ($${TREADMILL.unlock}) at the sign`, { error: true })
