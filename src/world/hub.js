@@ -101,6 +101,7 @@ export function buildHub(scene) {
     leaderboard(root, 14, 0, 98.6, Math.PI, 'Most captures', '#ff4f6a'),
   ]
   for (const x of [0, 7, 14]) solidBox(2.4, 3.4, 0.4, x, 3.4, 98.6)
+  zones.push({ id: 'boards', kind: 'boards', x: 7, z: 95, r: 6 }) // E: Bloxity's full leaderboards
   textBoard(root, 32, 0.8, 98.4, Math.PI, 11, 5.6, 360, (ctx, w, h) => {
     const g = ctx.createLinearGradient(0, 0, 0, h)
     g.addColorStop(0, '#1c3f9e')

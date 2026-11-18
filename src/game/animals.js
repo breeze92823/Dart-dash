@@ -450,7 +450,7 @@ export class Animal {
         L.ring.el.classList.toggle('warn', warn)
         this.ringArc.setAttribute('stroke', warn ? '#ff5a4a' : '#7dff5a')
       }
-      // Who has it, only when that is someone else (a bot's catch you can steal).
+      // Who has it, only when that is someone else.
       const carried = this.state === 'carried'
       const by = carried ? (this.carriedByPlayer ? '' : `Carried by ${this.carriedBy ?? ''}`) : this.sleptByPlayer ? '' : `Put to sleep by ${this.sleptBy}`
       if (this.ringBy.textContent !== by) this.ringBy.textContent = by

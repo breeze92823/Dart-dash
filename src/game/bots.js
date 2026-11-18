@@ -241,12 +241,20 @@ export function createBots({ scene, animals, darts, events, live }) {
     // Leaderboard rows (player + bots + the server's saved players), refreshed every few seconds
     // by main.js. server: the backend's `leaderboard` message ({ boards: { money|steps|captures:
     // [{ name, value }] } }) or null.
-    redrawBoards(playerName, server = null) {
+    // room: the other players in the room ({ name, money, steps, captures }); global: Bloxity's top
+    // lists { steps: [{ name, value }], captures: [...] }. One row per name (its best value).
+    redrawBoards(playerName, server = null, room = [], global = {}) {
       const me = { name: playerName, me: true, money: state.money, steps: state.steps, captures: state.captures }
-      const all = [me, ...bots.map((b) => ({ name: b.name, money: b.money, steps: b.steps, captures: b.captures }))]
+      const all = [me, ...room, ...bots.map((b) => ({ name: b.name, money: b.money, steps: b.steps, captures: b.captures }))]
       const rows = (key, fmtv) => {
-        const extra = (server?.boards?.[key] ?? []).filter((r) => r.name !== playerName).map((r) => ({ name: r.name, [key]: r.value }))
-        return [...all, ...extra].sort((a, b) => b[key] - a[key]).slice(0, 10).map((r) => ({ name: r.name, me: r.me, value: fmtv(r[key]) }))
+        const extra = [...(server?.boards?.[key] ?? []), ...(global[key] ?? [])].map((r) => ({ name: r.name, [key]: r.value }))
+        const best = new Map()
+        for (const r of [...all, ...extra]) {
+          const v = Number(r[key]) || 0
+          const prev = best.get(r.name)
+          if (!prev || (!prev.me && v > prev.v)) best.set(r.name, { name: r.name, me: r.me || prev?.me, v: r.me ? v : Math.max(v, prev?.v ?? 0) })
+        }
+        return [...best.values()].sort((a, b) => b.v - a.v).slice(0, 10).map((r) => ({ name: r.name, me: r.me, value: fmtv(r.v) }))
       }
       live.boards[0].redraw(rows('money', (v) => `$${fmt(v)}`))
       live.boards[1].redraw(rows('steps', (v) => `${fmt(v)} st`))
