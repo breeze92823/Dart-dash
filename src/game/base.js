@@ -2,13 +2,15 @@
 // prompt), carry it overhead (slower for heavy ones) back to your base before
 // it wakes, and it is placed in the pen the moment you step inside. Pen animals
 // earn $ every second with a "+N $" pop. Also: shop pads, the gift, portal,
-// pen-upgrade sign and the treadmill (steps = permanent speed).
-import { Color, Vector3 } from 'three'
-import { ANIMALS, BASE, CARRY, DARTS, FREE_DARTS, MUTATIONS, PEN, POSES, RARITIES, TREADMILL } from '../config.js'
+// pen-upgrade sign and the treadmill (steps = permanent speed). This drives the LOCAL player's base
+// (the slot the server gave them, setSlot); the other players' bases are game/remoteBases.js.
+import { Vector3 } from 'three'
+import { ANIMALS, BASES, CARRY, DARTS, FREE_DARTS, MUTATIONS, PEN, POSES, RARITIES, TREADMILL } from '../config.js'
 import { player } from '../player.js'
 import { addLabel, popLabel } from '../fx/labels.js'
-import { CELL, cashBurst, confetti, dust, emit as fx, ringPulse, sparkle } from '../fx/particles.js'
-import { BELT_TILE } from '../world/hub.js'
+import { cashBurst, confetti, dust, ringPulse, sparkle } from '../fx/particles.js'
+import { baseMarkerHtml } from '../world/hub.js'
+import { animateMill, consoleView, millSpeedUp } from './treadmillFx.js'
 import { Animal, displayName, landedFx } from './animals.js'
 import { animalThumb } from '../ui/thumbs.js'
 import { addMoney, addSteps, addToPen, emit, fmt, incomePerSec, on, penCapacity, penUpgradePrice, save, speedBonus, state, stepsPerStep, unlockTreadmill, upgradePen } from './state.js'
@@ -21,12 +23,18 @@ const inside = (z, p, pad = 0) => p.x > z.minX - pad && p.x < z.maxX + pad && p.
 
 export function createBase({ scene, animals, hubZones, live, playerGroup, getAnimator, playerName, onCaptured }) {
   const pen = [] // Animal (mode 'pen')
+  let mySlot = 0
+  const mine = () => live.bases[mySlot]
+  const myBase = () => BASES[mySlot]
   let carried = null
   let warnTimer = 0
   let fullWarned = false
   let incomeTimer = 1
   let stepTimer = 0
+  let training = false
   const inZone = new Set()
+
+  mine().marker.html = baseMarkerHtml('YOUR BASE')
 
   // --- Prompt (one shared proximity prompt) -----------------------------------------------------
   const promptPos = new Vector3()
@@ -52,10 +60,13 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
 
   // --- Pen animals --------------------------------------------------------------------------------
   function spawnPenAnimal(entry, at = null) {
-    const a = new Animal(entry.species, entry.mutation, { income: entry.income, mode: 'pen' })
+    const a = new Animal(entry.species, entry.mutation, { income: entry.income, mode: 'pen', bounds: myBase() })
     a.entryId = entry.id
     if (at) a.pos.copy(at)
-    else a.pos.set(BASE.minX + 3 + Math.random() * (BASE.maxX - BASE.minX - 6), 0, BASE.minZ + 3 + Math.random() * (BASE.maxZ - BASE.minZ - 6))
+    else {
+      const B = myBase()
+      a.pos.set(B.minX + 3 + Math.random() * (B.maxX - B.minX - 6), 0, B.minZ + 3 + Math.random() * (B.maxZ - B.minZ - 6))
+    }
     a.pos.y = 0
     a.groundAt = 0
     a.pickTarget()
@@ -90,15 +101,16 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
 
   // --- Signs --------------------------------------------------------------------------------------
   function redrawSigns() {
+    const b = mine()
     const up = penUpgradePrice()
-    live.upgradeSign.redraw(state.pen.level, up == null ? 'MAX' : `${fmt(up)} $`)
+    b.upgradeSign.redraw(state.pen.level, up == null ? 'MAX' : `${fmt(up)} $`)
     const t = state.treadmill
-    if (!t.unlocked) live.treadmillSign.redraw('UNLOCK', 'TREADMILL', `${fmt(TREADMILL.unlock)} $`)
+    if (!t.unlocked) b.treadmillSign.redraw('UNLOCK', 'TREADMILL', `${fmt(TREADMILL.unlock)} $`)
     else {
       const p = TREADMILL.upgrade[t.level]
-      live.treadmillSign.redraw('TREADMILL', `LVL ${t.level + 1}`, p == null ? 'MAX' : `${fmt(p)} $`)
+      b.treadmillSign.redraw('TREADMILL', `LVL ${t.level + 1}`, p == null ? 'MAX' : `${fmt(p)} $`)
     }
-    live.stepLabel.html = `+${fmt(stepsPerStep())}/STEP`
+    b.stepLabel.html = `+${fmt(stepsPerStep())}/STEP`
   }
   redrawSigns()
   on('treadmill', redrawSigns)
@@ -166,8 +178,9 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
       return
     }
     const spot = new Vector3(player.position.x + Math.sin(player.facing) * 1.5, 0, player.position.z + Math.cos(player.facing) * 1.5)
-    spot.x = Math.min(BASE.maxX - 2, Math.max(BASE.minX + 2, spot.x))
-    spot.z = Math.min(BASE.maxZ - 2, Math.max(BASE.minZ + 2, spot.z))
+    const B = myBase()
+    spot.x = Math.min(B.maxX - 2, Math.max(B.minX + 2, spot.x))
+    spot.z = Math.min(B.maxZ - 2, Math.max(B.minZ + 2, spot.z))
     const pa = spawnPenAnimal(entry, spot)
     const tier = RARITIES[ANIMALS[entry.species].rarity].tier
     const fxAt = tmp.copy(spot).setY(1.2)
@@ -188,107 +201,24 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
     save()
   }
 
-  // --- Treadmill machine: belt, rollers, fan, LEDs, console screen, the runner's sweat ----------------
-  const mill = live.mill
-  const TM = BASE.treadmill
-  const millPull = { x: 0, z: 1, cx: TM.x, cz: TM.z + 0.3 } // belt carries you toward +z (the mill faces -z)
-  const ledIdle = new Color('#3fe0ff')
-  const ledLocked = new Color('#ff3b3b')
-  const ledFlash = new Color('#ffffff')
-  const screenData = { locked: true, steps: '0', perStep: '1', bonus: '0.0', next: 0, bpm: 72, run: 0, banner: '', blink: false }
-  let millRun = 0 // 0 idle .. 1 full speed, eased
-  let millT = 0
-  let screenTimer = 0
-  let sweatTimer = 0
-  let windTimer = 0
-  let gritTimer = 0
-  let flash = 0
-  let bannerLeft = 0
-  const rnd = (a, b) => a + Math.random() * (b - a)
-
-  function millSpeedUp() {
-    flash = 1
-    bannerLeft = 1.8
-    screenTimer = 0
-    const p = player.position
-    ringPulse(tmp.set(TM.x, 0.5, TM.z), '#5dffc0', 7)
-    sparkle(tmp.set(p.x, p.y + 1.4, p.z), '#5dffc0', 18, 5)
-    confetti(tmp.set(p.x, p.y + 2.2, p.z), 24)
+  // --- Treadmill machine (game/treadmillFx.js animates it) -----------------------------------------------
+  const runner = { x: 0, y: 0, z: 0, facing: 0, speed: 0 }
+  function millView() {
+    const bonus = speedBonus()
+    return consoleView({ steps: state.steps, stepsText: fmt(state.steps), perStepText: fmt(stepsPerStep()), bonus })
   }
-
-  function animateMill(dt, training, ctx) {
-    if (!mill) return
-    millT += dt
-    const unlocked = state.treadmill.unlocked
-    millRun += ((training ? 1 : 0) - millRun) * Math.min(1, dt * (training ? 5 : 1.6))
-    if (millRun < 0.002) millRun = 0
-    const speed = Math.hypot(player.velocity.x, player.velocity.z)
-    const v = millRun * Math.min(7, 2.5 + speed * 0.4) // belt surface m/s (capped so the slats don't strobe)
-    if (v > 0) {
-      live.belt.offset.y = (live.belt.offset.y - (dt * v) / BELT_TILE) % 1
-      for (const r of mill.rollers) r.rotation.x = (r.rotation.x + (dt * v) / mill.rollerR) % (Math.PI * 2)
-    }
-    mill.fan.rotation.z = (mill.fan.rotation.z - dt * millRun * 24) % (Math.PI * 2)
-    mill.group.position.y = mill.baseY + Math.abs(Math.sin(millT * 13)) * 0.014 * millRun // motor rumble
-
-    // LED strips: dim red while locked, a slow cyan breath when ready, a fast pulse while running.
-    flash = Math.max(0, flash - dt * 1.2)
-    const led = mill.led
-    if (!unlocked) {
-      led.emissive.copy(ledLocked)
-      led.emissiveIntensity = 0.3 + 0.15 * Math.sin(millT * 3)
-    } else {
-      led.emissive.copy(ledIdle).lerp(ledFlash, flash)
-      led.emissiveIntensity = 0.5 + 0.2 * Math.sin(millT * 2) + millRun * (1.1 + 0.7 * Math.sin(millT * 14)) + flash * 3
-    }
-
-    // Console screen, refreshed a few times a second while the camera is near.
-    bannerLeft = Math.max(0, bannerLeft - dt)
-    screenTimer -= dt
-    if (screenTimer <= 0 && ctx.near(tmp.set(TM.x, 2, TM.z), 40)) {
-      screenTimer = 0.25
-      const bonus = speedBonus()
-      screenData.locked = !unlocked
-      screenData.steps = fmt(state.steps)
-      screenData.perStep = fmt(stepsPerStep())
-      screenData.bonus = bonus.toFixed(1)
-      screenData.next = bonus >= TREADMILL.maxBonus ? 1 : (state.steps % TREADMILL.stepsPer) / TREADMILL.stepsPer
-      screenData.run = millRun
-      screenData.bpm = Math.round(72 + millRun * 78 + (millRun > 0.5 ? rnd(-3, 3) : 0))
-      screenData.blink = !screenData.blink
-      screenData.banner = bannerLeft > 0 ? 'SPEED UP!' : ''
-      mill.screen.redraw(screenData)
-    }
-
-    if (!training) return
-    const p = player.position
-    // Sweat drops flicked off to the sides.
-    sweatTimer -= dt
-    if (sweatTimer <= 0) {
-      sweatTimer = rnd(0.3, 0.6)
-      const a = player.facing + (Math.random() < 0.5 ? -1 : 1) * (Math.PI / 2 + rnd(-0.4, 0.4))
-      const s = rnd(1, 2)
-      fx({ x: p.x, y: p.y + 1.9, z: p.z, vx: Math.sin(a) * s, vy: rnd(1.6, 2.8), vz: Math.cos(a) * s, life: 0.75, size: 0.17, size2: 0.1, gravity: 12, alpha: 0.95 }, '#8fe3ff')
-    }
-    // Wind streaks rushing past the runner, the way the belt goes.
-    windTimer -= dt
-    if (windTimer <= 0) {
-      windTimer = 0.07
-      const w = 6 + v
-      fx({ x: p.x + rnd(-0.8, 0.8), y: p.y + rnd(0.3, 2), z: p.z + rnd(-0.6, 0.2), vx: millPull.x * w, vz: millPull.z * w, life: 0.3, size: 0.11, size2: 0.02, alpha: 0.6 }, '#ffffff', true)
-    }
-    // Grit thrown off the back roller.
-    gritTimer -= dt
-    if (gritTimer <= 0) {
-      gritTimer = rnd(0.15, 0.35)
-      fx({ x: TM.x + rnd(-0.8, 0.8), y: 0.4, z: TM.z + 2.35, vx: rnd(-0.4, 0.4), vy: rnd(0.6, 1.6), vz: v * 0.5 + rnd(0, 1), life: 0.5, size: 0.08, gravity: 9, cell: CELL.square, rot: rnd(0, 6) }, '#5a5e68')
-    }
+  const millPull = { x: 0, z: 1, cx: 0, cz: 0 } // belt carries you toward +z (the mill faces -z)
+  function aimMill() {
+    const TM = myBase().treadmill
+    millPull.cx = TM.x
+    millPull.cz = TM.z + 0.3
   }
+  aimMill()
 
   // --- Zones ------------------------------------------------------------------------------------------
-  const zone = (id) => hubZones.find((z) => z.id === id)
-  const penZone = zone('pen')
-  const treadZone = zone('treadmill')
+  const penZone = () => mine().penZone
+  const treadZone = () => mine().treadZone
+  const myZone = (z) => z.slot === undefined || z.slot === mySlot // a plot's zones only work for its owner
   function enterZone(z) {
     if (z.kind === 'shop') {
       if (z.id === 'darts') {
@@ -312,6 +242,7 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
     const p = player.position
     let best = null
     for (const z of hubZones) {
+      if (!myZone(z)) continue
       let here
       if (z.r != null) here = Math.hypot(p.x - z.x, p.z - z.z) < z.r && p.y > -1
       else here = inside(z, p)
@@ -321,7 +252,7 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
       } else if (!here && inZone.has(z.id)) inZone.delete(z.id)
       if (here && (z.kind === 'gift' || z.kind === 'upgradePen' || z.kind === 'treadmillSign')) best = z
     }
-    if (!inZone.has('pen')) fullWarned = false
+    if (!inZone.has(penZone().id)) fullWarned = false
     return best
   }
 
@@ -335,7 +266,7 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
         if (up == null) return
         if (upgradePen()) {
           sfx.purchase()
-          confetti(tmp.set(BASE.minX + 2, 2, (BASE.minZ + BASE.maxZ) / 2), 30)
+          confetti(tmp.set(myBase().minX + 2, 2, (myBase().minZ + myBase().maxZ) / 2), 30)
           hud.toast(`+1 active slot! ${penCapacity()} animals earn now`)
           save()
         } else {
@@ -369,10 +300,32 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
       return carried
     },
     pen,
+    get slot() {
+      return mySlot
+    },
+    get treadmillRunning() {
+      return training
+    },
+    // The server gave this player base `slot` (0..ROOM_SIZE-1): move the pen, signs and treadmill
+    // controls there. Returns false when nothing changed.
+    setSlot(slot) {
+      if (!Number.isInteger(slot) || slot < 0 || slot >= BASES.length || slot === mySlot) return false
+      live.bases[mySlot].marker.el.classList.remove('pulse')
+      mySlot = slot
+      inZone.clear()
+      aimMill()
+      for (const a of pen) {
+        a.bounds = myBase()
+        a.pos.set(myBase().minX + 3 + Math.random() * (myBase().maxX - myBase().minX - 6), 0, myBase().minZ + 3 + Math.random() * (myBase().maxZ - myBase().minZ - 6))
+        a.pickTarget()
+      }
+      redrawSigns()
+      return true
+    },
     update(dt, ctx) {
       // Pen animals live their lives.
       for (const a of pen) a.update(dt, ctx)
-      live.baseMarker?.el.classList.toggle('pulse', !!carried) // YOUR BASE bobs while you carry one home
+      mine().marker.el.classList.toggle('pulse', !!carried) // YOUR BASE bobs while you carry one home
 
       // Carried animal rides overhead; it may wake.
       if (carried) {
@@ -387,7 +340,7 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
             warnTimer = a.sleepLeft < 2.5 ? 0.25 : 0.5
             sfx.warnTick(a.sleepLeft < 2.5)
           }
-          if (inside(penZone, player.position)) place()
+          if (inside(penZone(), player.position)) place()
         }
       }
 
@@ -420,11 +373,16 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
 
       // Treadmill: steps while you walk on it.
       player.speedBonus = speedBonus()
-      const onMill = inside(treadZone, player.position) && player.grounded
+      const onMill = inside(treadZone(), player.position) && player.grounded
       const moving = Math.hypot(player.velocity.x, player.velocity.z) > 2
-      const training = onMill && moving && state.treadmill.unlocked
+      training = onMill && moving && state.treadmill.unlocked
       player.belt = training ? millPull : null
-      animateMill(dt, training, ctx)
+      runner.x = player.position.x
+      runner.y = player.position.y
+      runner.z = player.position.z
+      runner.facing = player.facing
+      runner.speed = Math.hypot(player.velocity.x, player.velocity.z)
+      animateMill(mine(), dt, { training, runner, unlocked: state.treadmill.unlocked, view: millView(), near: ctx.near })
       if (onMill && moving) {
         if (!state.treadmill.unlocked) {
           if (stepTimer <= 0) {
@@ -442,7 +400,7 @@ export function createBase({ scene, animals, hubZones, live, playerGroup, getAni
           if (speedBonus() > before) {
             hud.toast(`Speed up! +${speedBonus().toFixed(1)} m/s`)
             sfx.levelUp()
-            millSpeedUp()
+            millSpeedUp(mine(), player.position)
           }
         }
       }

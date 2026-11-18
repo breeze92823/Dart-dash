@@ -9,7 +9,7 @@ import { RAPIER, addFixed } from '../physics.js'
 import { solidBox } from '../propkit.js'
 import { bake } from '../bake.js'
 import { mulberry32 } from '../textures.js'
-import { block, checker } from './kit.js'
+import { block, checker, mat } from './kit.js'
 import { pine, tree } from './props.js'
 
 // Flat ground quad with a checker texture tiled every `tile` m.
@@ -55,6 +55,10 @@ function makeClouds() {
   return group
 }
 
+// The cliffs' grass caps share one material so each area can recolour them (snow, ash...).
+let capMat = null
+const cliffCap = () => (capMat ??= mat('#4bc93a', { rough: 0.85 }).clone())
+
 // One terraced cliff tier: stone block with a dirt band and grass cap, plus a few
 // stone ledges sticking out of the face for texture.
 function cliffTier(parent, rand, x0, x1, z0, z1, yBottom, yTop, side = 1) {
@@ -64,7 +68,7 @@ function cliffTier(parent, rand, x0, x1, z0, z1, yBottom, yTop, side = 1) {
   const stone = rand() < 0.5 ? '#6f7d8f' : '#768498'
   block(parent, w, h - 1.1, d, stone, (x0 + x1) / 2, yBottom + (h - 1.1) / 2, (z0 + z1) / 2, { rough: 0.9 })
   block(parent, w, 0.6, d, '#8a5a31', (x0 + x1) / 2, yTop - 0.8, (z0 + z1) / 2)
-  block(parent, w + 0.3, 0.5, d, '#4bc93a', (x0 + x1) / 2, yTop - 0.25, (z0 + z1) / 2, { rough: 0.85 })
+  block(parent, w + 0.3, 0.5, d, cliffCap(), (x0 + x1) / 2, yTop - 0.25, (z0 + z1) / 2)
   // Facets on the face toward the play area (side 1: the east face of the west cliffs; -1: the west face of the east cliffs).
   for (let i = 0; i < Math.floor(d / 6); i++) {
     const fz = z0 + 2 + rand() * (d - 4)
@@ -196,7 +200,7 @@ export function buildWorld(scene) {
     const zc = farZ - (d0 + d1) / 2
     block(statics, x1 - x0, top - LANE.y - 1.1, d1 - d0, stoneEnd[i % 2], (x0 + x1) / 2, LANE.y + (top - LANE.y - 1.1) / 2, zc, { rough: 0.9 })
     block(statics, x1 - x0, 0.6, d1 - d0, '#8a5a31', (x0 + x1) / 2, top - 0.8, zc)
-    block(statics, x1 - x0, 0.5, d1 - d0 + 0.3, '#4bc93a', (x0 + x1) / 2, top - 0.25, zc, { rough: 0.85 })
+    block(statics, x1 - x0, 0.5, d1 - d0 + 0.3, cliffCap(), (x0 + x1) / 2, top - 0.25, zc)
   }
   for (let i = 0; i < 40; i++) {
     const z = farZ - 2 - rand2() * 40
@@ -229,18 +233,39 @@ export function buildWorld(scene) {
   // Invisible wall where the plateau meets the cliffs' foot and along the east side.
   solidBox(0.5, 20, (HUB.maxZ - farZ) / 2, HUB.minX - 0.4, 10, (HUB.maxZ + farZ) / 2)
 
-  // A few trees and rocks in the next-area strip so it reads as land beyond the barrier.
-  for (let i = 0; i < Math.round(BARRIER.depth / 2.5); i++) {
-    const x = LANE.minX + 6 + rand() * (LANE.maxX - LANE.minX - 12)
-    const z = farZ + 5 + rand() * (BARRIER.depth - 12)
-    if (rand() < 0.5) pine(statics, x, LANE.y, z, 1 + rand() * 0.6)
-    else tree(statics, x, LANE.y, z, 0.9 + rand() * 0.5)
-  }
-
   const baked = bake(statics, true)
   baked.traverse((o) => {
     if (o.isMesh) o.receiveShadow = true
   })
   root.add(baked)
-  return { root, lane, preview } // lane: the lane floor (tinted per world); preview: the strip past the barrier (tinted as the next area)
+  // Re-skin a ground quad with a checker of colours [a, b] (cached per pair).
+  const checkers = new Map()
+  function paint(mesh, [a, b]) {
+    const key = a + b
+    if (!checkers.has(key)) checkers.set(key, checker(a, b, { studsPerSquare: 7 }))
+    const t = checkers.get(key)
+    const old = mesh.material.map
+    const map = t.map.clone()
+    const normal = t.normal.clone()
+    map.repeat.copy(old.repeat)
+    normal.repeat.copy(old.repeat)
+    map.needsUpdate = normal.needsUpdate = true
+    old.dispose()
+    mesh.material.normalMap?.dispose()
+    mesh.material.map = map
+    mesh.material.normalMap = normal
+    mesh.material.color.set('#ffffff')
+    mesh.material.needsUpdate = true
+  }
+  return {
+    root,
+    lane, // the lane floor
+    preview, // the strip past the barrier
+    // Dress the ground: lane + cliff caps as `look`, the strip past the barrier as `next` (areas.js AREAS entries).
+    setGround(look, next) {
+      paint(lane, look.ground)
+      paint(preview, (next ?? look).ground)
+      cliffCap().color.set(look.cliff)
+    },
+  }
 }

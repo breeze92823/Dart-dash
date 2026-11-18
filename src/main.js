@@ -17,6 +17,7 @@ import { buildWorld } from './world/world.js'
 import { buildHub } from './world/hub.js'
 import { buildLane } from './world/lane.js'
 import { buildBarrier } from './world/barrier.js'
+import { AREAS } from './world/areas.js'
 import { weaponThumb } from './ui/thumbs.js'
 import { initParticles, setParticleQuality, updateParticles } from './fx/particles.js'
 import { updateLabels } from './fx/labels.js'
@@ -221,10 +222,14 @@ applySettings()
 const applySkin = () => hud.setScopeTint(SKINS[state.cosmetics.skin]?.scope.tint ?? '#1b1d1f')
 on('cosmetic', applySkin)
 applySkin()
-// Worlds: the lane floor takes the world's tint and the lane fills with its animals.
+// Worlds: the lane is dressed in the area's look (areas.js: ground, cliff caps, props, pond), the
+// strip past the barrier in the next area's, and the lane fills with the area's animals.
 let laneWorld = state.world
 function applyWorld(announce) {
-  world.lane.material.color.set(WORLDS[state.world].tint)
+  const ids = Object.keys(WORLDS)
+  const next = ids[ids.indexOf(state.world) + 1] ?? null
+  lane.setArea(state.world, next)
+  world.setGround(AREAS[state.world] ?? AREAS.meadow, next && AREAS[next])
   if (laneWorld === state.world) return
   laneWorld = state.world
   animals.reroll()
@@ -235,13 +240,11 @@ function applyWorld(announce) {
 }
 on('world', () => applyWorld(true))
 applyWorld(false)
-// The green barrier at the lane's far end names the next area and the gun that opens it; the
-// strip behind it takes that area's tint.
+// The green barrier at the lane's far end names the next area and the gun that opens it.
 let barrierKey = ''
 function applyBarrier() {
   const ids = Object.keys(WORLDS)
   const next = ids[ids.indexOf(state.world) + 1]
-  world.preview.material.color.set(WORLDS[next ?? state.world].tint)
   const locked = next ? !worldUnlocked(next) : false
   const key = `${next}|${locked}|${state.cosmetics.skin}`
   if (key === barrierKey) return
@@ -342,6 +345,7 @@ function frame(forcedDt) {
   // Hub life: the portal swirls, shop pads breathe, mutations shimmer.
   if (hub.live.portal?.userData.swirl) hub.live.portal.userData.swirl.uniforms.time.value = elapsed
   barrier.update(elapsed)
+  lane.update(elapsed)
   for (const d of hub.live.discs) {
     d.userData.ring.scale.setScalar(1 + Math.sin(elapsed * 2.5) * 0.04)
     d.userData.disc.material.emissiveIntensity = 0.28 + Math.sin(elapsed * 2.5) * 0.1
@@ -446,5 +450,11 @@ if (import.meta.env.DEV) {
     const d = c.sub(e)
     setView(Math.atan2(-d.x, -d.z), -Math.atan2(d.y, Math.hypot(d.x, d.z)))
   }
-  window.__game = { step, aimAt, darts, player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, state, animals, base, aim, events, bots, addMoney, LANE, net, playtime, openPanel }
+  window.__game = { step, aimAt, darts, player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, state, animals, base, aim, events, bots, addMoney, LANE, net, playtime, openPanel,
+    // Preview an area's look without travelling (the save is untouched): __game.lookAs('volcano')
+    lookAs: (id, next = null) => {
+      lane.setArea(id, next)
+      world.setGround(AREAS[id], next && AREAS[next])
+    },
+  }
 }

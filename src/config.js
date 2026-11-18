@@ -287,12 +287,29 @@ export const LANE = {
 // field with a big sign naming the next area and the gun that opens it. Behind it, `depth` m of
 // ground tinted as the next area (the lane runs on), ending in a terraced cliff face.
 export const BARRIER = { z: LANE.minZ, depth: 140, height: 26, sign: { w: 48, h: 16, y: 5 } }
-export const BASE = {
-  // The player's fenced pen. Entrance gap on its west side.
-  minX: 24, maxX: 52, minZ: -16, maxZ: 22,
-  gateZ: [-1, 7], // gap in the west fence
-  treadmill: { x: 15, z: -26 },
+// One room holds ROOM_SIZE players (the backend's ROOM_MAX_CLIENTS, keep them equal) and every
+// player owns one of ROOM_SIZE bases, laid out in the hub's east half as a 2 x 3 grid of plots.
+// A plot = a fenced pen (its gate in the west fence) + the owner's treadmill and the pen-upgrade
+// sign in the strip west of it. The server hands out the slot (0..ROOM_SIZE-1) when you join.
+export const ROOM_SIZE = 6
+export const PLOT = { w: 25, d: 23, x0: 4, z0: -27 }
+function makeBase(slot) {
+  const x0 = PLOT.x0 + (slot % 2) * PLOT.w
+  const z0 = PLOT.z0 + Math.floor(slot / 2) * PLOT.d
+  return {
+    slot,
+    plot: { minX: x0, maxX: x0 + PLOT.w, minZ: z0, maxZ: z0 + PLOT.d },
+    minX: x0 + 9, maxX: x0 + 25, minZ: z0 + 4, maxZ: z0 + 19, // the fenced pen
+    gateZ: [z0 + 8.5, z0 + 15.5], // gap in the west fence
+    treadmill: { x: x0 + 3, z: z0 + 4.5 },
+    // Where its owner appears (outside the gate, facing the pen).
+    spawn: { x: x0 + 6, y: 0.05, z: z0 + 12 },
+    facing: Math.PI / 2,
+  }
 }
+export const BASES = Array.from({ length: ROOM_SIZE }, (_, i) => makeBase(i))
+export const BASE = BASES[0] // legacy default (a session without a server owns slot 0)
+export const inAnyPlot = (x, z, pad = 0) => BASES.some((b) => x > b.plot.minX - pad && x < b.plot.maxX + pad && z > b.plot.minZ - pad && z < b.plot.maxZ + pad)
 
 // --- Rarities, worlds + animals (game/animals.js, ui/panels.js Index) -----------------------------
 // Every world has one animal of each rarity (the Index shows them as grey, green, blue, purple,
@@ -311,14 +328,15 @@ const R_ODDS = { common: 3, uncommon: 7, rare: 25, epic: 120, legendary: 600, my
 const R_INCOME = { common: [3, 8], uncommon: [12, 30], rare: [60, 140], epic: [400, 900], legendary: [3000, 6000], mythic: [25000, 50000] }
 const R_HP = { common: 1, uncommon: 1, rare: 2, epic: 2, legendary: 3, mythic: 5 }
 // The worlds, in portal order: income multiplier, the weapon that unlocks it (Armory; any
-// stronger weapon works too), lane floor tint, and the Index reward for discovering all six of
+// stronger weapon works too), and the Index reward for discovering all six of
 // its animals ($ + speed = treadmill steps + that world's aura).
+// Each world's look in the lane (ground, cliff caps, props, pond) lives in world/areas.js AREAS.
 export const WORLDS = {
-  meadow: { name: 'Meadow', mult: 1, weapon: 'blowpipe', tint: '#ffffff', reward: { money: 9000, steps: 200 } },
-  marsh: { name: 'Marsh', mult: 8, weapon: 'rifle', tint: '#8fd0a0', reward: { money: 400000, steps: 1000 } },
-  forest: { name: 'Forest', mult: 60, weapon: 'carbine', tint: '#6fa85a', reward: { money: 3e7, steps: 5000 } },
-  mountain: { name: 'Mountain', mult: 450, weapon: 'sniper', tint: '#eef4ff', reward: { money: 2e9, steps: 30000 } },
-  volcano: { name: 'Volcano', mult: 3500, weapon: 'voidReaper', tint: '#b8664a', reward: { money: 1.5e11, steps: 500000 } },
+  meadow: { name: 'Meadow', mult: 1, weapon: 'blowpipe', reward: { money: 9000, steps: 200 } },
+  marsh: { name: 'Marsh', mult: 8, weapon: 'rifle', reward: { money: 400000, steps: 1000 } },
+  forest: { name: 'Forest', mult: 60, weapon: 'carbine', reward: { money: 3e7, steps: 5000 } },
+  mountain: { name: 'Mountain', mult: 450, weapon: 'sniper', reward: { money: 2e9, steps: 30000 } },
+  volcano: { name: 'Volcano', mult: 3500, weapon: 'voidReaper', reward: { money: 1.5e11, steps: 500000 } },
 }
 export const START_WORLD = 'meadow'
 // Voxel body each animal is built from (game/animalModels.js) and its physical defaults:
@@ -451,6 +469,33 @@ export const LANE_ANIMALS = {
   hpRegen: 12, // s after the last hit before a partly-dazed animal recovers
   alert: 1.4, // s the "!" stays over an animal that was shot at
   labelRange: 260, // studs: aiming labels shown within this distance
+}
+// Angry animals (game/danger.js): step into the lane (past the band) with none of your own
+// darted animals asleep or carried and the awake ones nearby turn on you. They notice (rear up,
+// snort), charge, wind up and lunge; a hit costs HP and knocks you back. Run back up the slope,
+// or dart one to sleep, and they calm down. 0 HP: knocked out and back to the hub.
+export const DANGER = {
+  laneZ: -44, // z the lane starts at for this (just past the band, BAND.z0)
+  notice: 13, // m an animal spots you at (+ noticeTier per rarity tier)
+  noticeTier: 2,
+  giveUp: 46, // m: past this it gives up the chase
+  maxAttackers: 4, // at once (the nearest ones)
+  noticeTime: 0.8, // s rearing up before the charge
+  chaseMult: 3, // x its walk speed, clamped to chaseSpeed
+  chaseSpeed: [7.5, 12.5], // m/s (walk 9, sprint 15: sprinting gets away)
+  reach: 1.7, // m past its body radius it starts the attack from
+  windup: 0.45, // s rearing back
+  lunge: 0.28, // s lunging forward (the hit lands mid-lunge)
+  lungeDist: 2.6, // m covered in the lunge
+  recover: 0.9, // s before it can attack again
+  stagger: 0.6, // s a dart that doesn't put it to sleep stops it
+  damage: [12, 15, 19, 24, 30, 40], // HP per hit by rarity tier (common..mythic)
+  knock: 9, // m/s knockback (x 1 + tier * 0.12), plus a hop
+  hp: 100, // player HP
+  regenDelay: 4, // s after a hit before HP refills
+  regen: 18, // HP/s
+  koTime: 2.2, // s knocked out before waking at the hub
+  safeTime: 3, // s untouchable after waking up
 }
 // Events: a special animal spawns on a timer (banner + wooden sign countdown). `pick` = the
 // current world's animal of that rarity, `season` = the seasonal animal of that rarity.
@@ -673,7 +718,20 @@ export const SAVE_KEY = 'dart-dash.save.v1'
 // Server link (net.js; backend ../Dart-dash-backend). Dev builds talk to a local server
 // (VITE_SERVER_URL_DEV, default ws://localhost:2567); production resolves it through Bloxity.
 export const SERVER_URL = import.meta.env.DEV ? import.meta.env.VITE_SERVER_URL_DEV || 'ws://localhost:2567' : ''
-export const NET = { saveEvery: 6, retry: 4, retryMax: 60, requestTimeout: 8 }
+export const NET = { saveEvery: 6, retry: 4, retryMax: 60, requestTimeout: 8, poseEvery: 0.1, baseEvery: 1.5, joinWindow: 60 }
+// Watch-an-ad rewards (Bloxity rewarded ads; never Gems). Ids are the ad placements (lowercase,
+// digits, hyphens) and match the backend's AD_PLACEMENTS. Each is a free boost, once per cooldown.
+export const AD_REWARDS = {
+  'free-darts': { name: 'Free Darts', desc: '+25 Basic darts', darts: { basic: 25 }, cooldown: 120 },
+  'cash-boost': { name: 'x2 Cash', desc: 'x2 cash/s for 5 min', boost: { id: 'cash', seconds: 300 }, cooldown: 600 },
+  'luck-boost': { name: 'x2 Luck', desc: 'x2 luck for 5 min', boost: { id: 'luck', seconds: 300 }, cooldown: 600 },
+}
+// Bloxity leaderboards (SDK define + server-side reporting); ids lowercase a-z, 0-9, _ or -.
+export const LEADERBOARDS = [
+  { id: 'captures', label: 'Captures', order: 'desc', mode: 'best', format: 'compact', reset: 'none', stat: 'captures' },
+  { id: 'steps', label: 'Treadmill steps', order: 'desc', mode: 'best', format: 'compact', reset: 'none', stat: 'steps' },
+  { id: 'earned', label: 'Total earned', order: 'desc', mode: 'best', format: 'compact', reset: 'weekly', stat: 'earned' },
+]
 export const BOT_NAMES = ['Pixelfox', 'Mossy_Kid', 'DartQueen', 'Tobi2013', 'NoodleArm', 'Sk8rBean']
 export const BOTS = { count: 3 }
 

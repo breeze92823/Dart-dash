@@ -15,6 +15,7 @@ const rnd = (a, b) => a + Math.random() * (b - a)
 const TAU = Math.PI * 2
 const tmp = new Vector3()
 const RING = 2 * Math.PI * 54
+const ZERO_POSE = { pitch: 0, push: 0, head: 0 }
 
 // Seasonal animals are worth the current world's mult x SEASON.mult.
 export function rollIncome(species, mutation) {
@@ -33,8 +34,9 @@ export function displayName(species, mutation) {
 let nextId = 1
 
 export class Animal {
-  constructor(species, mutation, { income, event = false, mode = 'lane' } = {}) {
+  constructor(species, mutation, { income, event = false, mode = 'lane', bounds = BASE } = {}) {
     this.id = nextId++
+    this.bounds = bounds // the pen this animal lives in (config BASES[i])
     this.species = species
     this.def = ANIMALS[species]
     this.rarity = RARITIES[this.def.rarity]
@@ -67,6 +69,11 @@ export class Animal {
     this.stuck = [] // darts stuck in it
     this.groundTimer = 0
     this.labels = {}
+    // Angry at the player (game/danger.js drives it): { phase, t, ... } or null. `ap` is the attack
+    // pose (pitch: rear back < 0 < lunge, push: body slides forward, head: head down) eased in animate.
+    this.anger = null
+    this.ap = { pitch: 0, push: 0, head: 0 }
+    this.apTarget = { pitch: 0, push: 0, head: 0 }
     this.pickTarget()
   }
 
@@ -84,7 +91,8 @@ export class Animal {
 
   pickTarget() {
     if (this.mode === 'pen') {
-      this.target.set(rnd(BASE.minX + 2, BASE.maxX - 2), 0, rnd(BASE.minZ + 2, BASE.maxZ - 2))
+      const B = this.bounds
+      this.target.set(rnd(B.minX + 2, B.maxX - 2), 0, rnd(B.minZ + 2, B.maxZ - 2))
       return
     }
     const S = LANE.spawn
@@ -118,10 +126,12 @@ export class Animal {
       this.sleptByPlayer = byPlayer
       return true
     }
-    this.flee(from)
+    if (this.anger) manager?.onAngryHit?.(this) // an angry one staggers instead of running off
+    else this.flee(from)
     return false
   }
   fallAsleep(seconds, by) {
+    this.anger = null
     this.state = 'asleep'
     this.sleepTotal = this.sleepLeft = seconds > 0 ? seconds : this.def.sleep
     this.sleptBy = by
@@ -217,7 +227,9 @@ export class Animal {
       // Wander / pen / flee.
       if (this.mode === 'lane' && this.hp < def.hp && ctx.now - this.lastHit > LANE_ANIMALS.hpRegen) this.hp = def.hp
       let speed = 0
-      if (this.fleeLeft > 0) {
+      if (this.anger && manager?.angerStep) {
+        manager.angerStep(this, dt, ctx)
+      } else if (this.fleeLeft > 0) {
         this.fleeLeft -= dt
         const dx = this.pos.x - this.fleeFrom.x
         const dz = this.pos.z - this.fleeFrom.z
@@ -266,8 +278,9 @@ export class Animal {
 
   clampToArea(p) {
     if (this.mode === 'pen') {
-      p.x = Math.min(BASE.maxX - 1.5, Math.max(BASE.minX + 1.5, p.x))
-      p.z = Math.min(BASE.maxZ - 1.5, Math.max(BASE.minZ + 1.5, p.z))
+      const B = this.bounds
+      p.x = Math.min(B.maxX - 1.5, Math.max(B.minX + 1.5, p.x))
+      p.z = Math.min(B.maxZ - 1.5, Math.max(B.minZ + 1.5, p.z))
     } else {
       const S = LANE.spawn
       p.x = Math.min(S.maxX + 4, Math.max(S.minX - 4, p.x))
@@ -356,6 +369,24 @@ export class Animal {
       w.rotation.z = s * flap * (1 - L)
     }
     if (rig.tail) rig.tail.rotation.y = Math.sin(this.age * 3 + this.id) * 0.25 * (1 - L)
+
+    // Attack pose (angry): rear back, lunge, head down for the charge; the tail lashes.
+    const ap = this.ap
+    const at = this.anger ? this.apTarget : ZERO_POSE
+    const k = Math.min(1, dt * (this.anger?.phase === 'lunge' ? 22 : 9))
+    ap.pitch += (at.pitch - ap.pitch) * k
+    ap.push += (at.push - ap.push) * k
+    ap.head += (at.head - ap.head) * k
+    if (Math.abs(ap.pitch) + Math.abs(ap.push) + Math.abs(ap.head) > 1e-3) {
+      pose.rotation.x = ap.pitch * (1 - L)
+      pose.position.z += ap.push * (1 - L)
+      pose.position.y += Math.max(0, -ap.pitch) * this.def.radius * 0.6
+      if (rig.head) rig.head.rotation.x += ap.head
+      if (ap.pitch < -0.1 && legs.length === 4) {
+        legs[0].rotation.x = legs[1].rotation.x = -1.1 * -ap.pitch // front legs kick up while rearing
+      }
+      if (rig.tail && this.anger) rig.tail.rotation.y = Math.sin(this.age * 18) * 0.6
+    } else pose.rotation.x = 0
 
     if (this.state !== 'carried') this.model.rotation.set(0, this.yaw, 0)
   }
